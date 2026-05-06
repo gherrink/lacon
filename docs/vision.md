@@ -48,5 +48,5 @@ Developers using AI coding assistants on real projects. Especially:
 
 - Local-only by default
 - Streaming over buffered (memory bounded for long builds)
-- Fast startup (<5ms cold) since the binary is invoked on every hook fire
+- Fast startup (<10ms cold) since the binary is invoked on every matched-command hot path
 - Cross-assistant from day two: Claude Code is the first adapter, but the core engine is assistant-agnostic

@@ -18,15 +18,18 @@ Rejected alternatives:
 
 ## Layout
 
+Bundled rules live under `bundled-rules/` (embedded into the binary at build time). Their fixtures live under `tests/fixtures/`, kept out of the binary so the embedded rule set stays slim:
+
 ```
 bundled-rules/
+  <rule-id>.yaml          # the rule itself
+
+tests/fixtures/
   <rule-id>/
-    rule.yaml
-    fixtures/
-      <scenario>/
-        input.txt        # captured raw stdout+stderr (merged)
-        expected.txt     # what the rule's pipeline must produce
-        meta.yaml        # provenance metadata
+    <scenario>/
+      input.txt           # captured raw stdout+stderr (merged)
+      expected.txt        # what the rule's pipeline must produce
+      meta.yaml           # provenance metadata
 ```
 
 Scenarios are short slugs describing the captured situation: `clean-install`, `with-warnings`, `compile-error`, `network-failure`, etc. Each rule should have at minimum one success-path fixture and one failure-path fixture.
@@ -66,7 +69,7 @@ Per fixture, the test asserts:
 
 ## Runner
 
-A single Rust integration test file walks the `bundled-rules/` tree, loads each rule + each of its fixtures, runs the rule's pipeline against `input.txt`, and asserts against `expected.txt`. Failures report the diff inline.
+A single Rust integration test file walks the `tests/fixtures/` tree, loads each rule (from `bundled-rules/<rule-id>.yaml`) and each of its scenarios, runs the rule's pipeline against `input.txt`, and asserts against `expected.txt`. Failures report the diff inline.
 
 ```
 $ cargo test --test bundled_rules
@@ -86,14 +89,14 @@ When a tool changes its output format (and a fixture starts failing on real outp
 1. Run the canonical command on a clean machine and capture stdout+stderr merged:
 
    ```bash
-   pnpm install 2>&1 > bundled-rules/pnpm-install/fixtures/clean-install/input.txt
+   pnpm install 2>&1 > tests/fixtures/pnpm-install/clean-install/input.txt
    ```
 
 2. Re-run the rule against the new input and inspect the output:
 
    ```bash
    lacon run --rule pnpm-install -- pnpm install 2>&1 \
-     > bundled-rules/pnpm-install/fixtures/clean-install/expected.txt
+     > tests/fixtures/pnpm-install/clean-install/expected.txt
    ```
 
    (Or use `cargo insta review` if running under `insta`.)

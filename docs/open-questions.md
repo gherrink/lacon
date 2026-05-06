@@ -1,8 +1,65 @@
 # Open questions
 
-Things we don't yet know that could change the design. Each one needs an answer (or a "we accept the unknown") before the relevant part of v1 ships.
+Design risks that could change v1. The doc has three sections:
 
-## Claude Code hook mechanics — resolved (ADR 0013)
+- **Open** — items that need a decision before the relevant code can land.
+- **Deferred to prototyping** — items where the right answer is more likely to fall out of working code than upfront design. Each has a likely-answer recorded so the implementor isn't starting from zero.
+- **Resolved** — design-phase decisions, kept here as the rationale log so anyone touching these topics can see why we chose what we chose.
+
+When a new design risk surfaces, add it to the appropriate section here.
+
+## Open
+
+### TUI heuristic mechanism
+
+The chained-command spec ([chained-commands](specs/chained-commands.md)) bypasses the entire chain when any segment looks interactive (`vim`, `less`, `git rebase -i`, `git commit` without `-m`, etc.). The spec doesn't say *how* the match is performed.
+
+Options:
+
+- **Hardcoded curated list in the adapter.** Simple, fast, opaque. Updates require code changes and a `lacon` release.
+- **User-configurable list** (e.g. `~/.config/lacon/tui-commands.yaml`). More flexible, but adds another config surface for users to learn.
+- **Reuse `bypass_when.is_tty: true`** from the rule schema. Doesn't quite fit — `is_tty` is runtime TTY detection of the *parent* invocation, not a name-pattern match against the *segment* command. Different mechanism.
+- **A `tui_when` clause on bundled rules.** Each rule declares its own TUI conditions (e.g. the `git` rule's `tui_when` says `args_contain: [-i]` or no `-m`). Distributed, but matches existing rule-schema extension points.
+
+**Action:** Pick a mechanism. Affects whether bundled rules need a new schema field, whether users can override the heuristic, and how the adapter implements segment inspection at rewrite time.
+
+### `.lacon/config.yaml` schema
+
+[architecture](architecture.md) mentions config files at three layers (bundled, user, project) with "global settings (retention, default `max_bytes`, raw-output storage on/off, etc.)" but no full spec exists. The privacy resolution added `store_raw_outputs: true` as a documented key — currently the only one specified.
+
+Open items:
+
+- Full key list (retention windows, `max_bytes` default, raw-output flag, hook timeout, future tokenizer settings, etc.)
+- Layer interaction (does project config override user config? merge or replace? per-key or whole-file?)
+- Validation: extend `lacon validate` to lint config files, or only rule files?
+
+**Action:** Write `docs/specs/config-schema.md` once we have a clearer list of v1 settings. May fall out naturally from prototyping the first few config consumers.
+
+## Deferred to prototyping
+
+Genuine unknowns where committing to an answer upfront is more likely to be wrong than waiting for the implementation to reveal the right shape. Each entry records a likely-answer so the implementor has a starting point.
+
+### Signal forwarding in `lacon run`
+
+When Claude Code's Bash tool times out (default 2 min) or the user interrupts, what does `lacon run` do? Forward SIGINT/SIGTERM to the wrapped subprocess and drain the pipeline for a partial result, or just die? The drain-partial-result path is more user-friendly but adds bookkeeping (and timing edge cases when the kill arrives mid-stage).
+
+**Likely answer:** SIGTERM forward + immediate exit for v1, no drain. Revisit if user reports indicate that partial-results-on-timeout is meaningful in practice.
+
+### `lacon init` idempotency
+
+What happens if `lacon init` runs in a project where the hook is already installed in `.claude/settings.json`? Overwrite, detect-and-skip, append? Same question on `lacon` upgrades — does a newer init refresh the existing config so users get new defaults?
+
+**Likely answer:** detect existing block via marker comment (e.g. `// lacon:hook`), replace the block contents in place, leave other settings.json keys alone. Idempotent re-runs become a no-op when the block matches the current desired state. Settle during the first integration test pass.
+
+### stdout/stderr merge ordering
+
+[ADR 0013](decisions/0013-filter-via-pretooluse-wrapper.md) says ordering "may differ from raw terminal interleaving" without specifying the implementation guarantee. POSIX line-buffered merge has known race conditions; merging losslessly with strict line atomicity requires either a pty or careful select/epoll bookkeeping.
+
+**Likely answer:** "best-effort line atomicity, no cross-stream order guarantee" once the implementation chooses an approach. Most rules don't depend on cross-stream order — they filter by content. Document the guarantee in `architecture.md` or `chained-commands.md` once chosen.
+
+## Resolved
+
+### Claude Code hook mechanics — resolved (ADR 0013)
 
 The load-bearing question — *can a hook modify output before the model sees it?* — was resolved by an empirical probe against live Claude Code on 2026-05-05.
 
@@ -21,7 +78,7 @@ The load-bearing question — *can a hook modify output before the model sees it
 
 `additionalContext` is reserved for v1.5: annotation of unmatched commands ("lacon could have stripped ~3 kB if it had a rule for this").
 
-## Starlark performance at hook scale — resolved (2026-05-06)
+### Starlark performance at hook scale — resolved (2026-05-06)
 
 Starlark startup overhead is small (<5ms) but it gets invoked on every command Claude Code runs that hits a rule with `post_process`. In a busy session that could be hundreds of times. The original question had two parts: *will it actually be a problem?* (unanswerable without a prototype to benchmark) and *if yes, daemon or accept?* (answerable now, on architectural grounds).
 
@@ -34,7 +91,7 @@ Starlark startup overhead is small (<5ms) but it gets invoked on every command C
 
 If v2 benchmarks show in-process optimization isn't enough, a persistent helper process can be reconsidered then — with real data driving the daemon-vs-no-daemon trade.
 
-## Chained command behavior — resolved (2026-05-06)
+### Chained command behavior — resolved (2026-05-06)
 
 Full semantics now live in [chained-commands](specs/chained-commands.md). Summary of resolutions:
 
@@ -44,7 +101,7 @@ Full semantics now live in [chained-commands](specs/chained-commands.md). Summar
 
 User-driven bypass (`!!`, `LACON_DISABLE=1`) remains whole-command. The splitting boundary (top-level operators only — quotes, subshells, command substitution, heredocs are opaque) is captured in the spec along with the test obligations for the splitter.
 
-## What lives outside hooks — resolved (2026-05-06)
+### What lives outside hooks — resolved (2026-05-06)
 
 Boundary documented in [v1-scope → Coverage boundary](v1-scope.md#coverage-boundary). The original concerns sort into three categories:
 
@@ -54,13 +111,13 @@ Boundary documented in [v1-scope → Coverage boundary](v1-scope.md#coverage-bou
 
 Long-running watchers and ANSI/control-sequence output were partially misframed in the original list. Foreground watcher output is filtered up to the tool timeout like any other command; backgrounded output never reaches the model. ANSI escapes that flow through stdout/stderr are filterable via `strip_ansi` — not a coverage gap. README copy can lift from the v1-scope section when written.
 
-## Tokenizer choice — resolved-as-deferred (2026-05-06)
+### Tokenizer choice — resolved-as-deferred (2026-05-06)
 
 The schema impact concern is settled: existing tracking columns are explicitly byte-named (`raw_stdout_bytes`, `raw_stderr_bytes`, `filtered_bytes`), so adding token columns later is a normal append-only migration ([ADR 0011](decisions/0011-sqlite-for-tracking.md)) with no v1 work required.
 
 The tokenizer choice itself is a v2 design decision and lives under [backlog → Per-token accounting](backlog.md), with the three-option tradeoff (Anthropic's tokenizer, tiktoken, heuristic) captured there for whoever picks it up. One factual update from the original framing: Anthropic's tokenizer is no longer closed — it's reachable via the Messages API `count_tokens` endpoint and via vendorable open packages, so the v2 trade is more "online API vs. vendored vs. heuristic" than "closed vs. open."
 
-## Privacy and `raw_outputs` — resolved (2026-05-06)
+### Privacy and `raw_outputs` — resolved (2026-05-06)
 
 v1 contract is now documented in [tracking-data-model → Privacy](specs/tracking-data-model.md#privacy):
 
@@ -71,7 +128,7 @@ v1 contract is now documented in [tracking-data-model → Privacy](specs/trackin
 
 A side-effect of this resolution: the tracking spec previously documented `lacon purge` subcommands as if they shipped in v1, contradicting `v1-scope.md`. The spec has been corrected to match the 6-command v1 surface and the manual cleanup path.
 
-## Testing strategy for rules — resolved (2026-05-06)
+### Testing strategy for rules — resolved (2026-05-06)
 
 Strategy now lives in [testing-rules](testing-rules.md). Summary:
 

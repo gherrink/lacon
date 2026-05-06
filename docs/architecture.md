@@ -129,7 +129,7 @@ lacon/
 │   └── lacon-adapter-claudecode/  # Claude Code hook integration
 ├── bundled-rules/                 # YAML rules embedded into the binary
 └── tests/
-    ├── fixtures/                  # captured raw outputs of common commands
+    ├── fixtures/                  # captured rule fixtures, one tree per rule + scenario (see docs/testing-rules.md)
     └── integration/
 ```
 

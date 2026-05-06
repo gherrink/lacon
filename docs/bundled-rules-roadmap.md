@@ -46,6 +46,6 @@ Likely high-value rules that didn't make v1 because of capacity, not interest:
 Every rule, before it lands, should have:
 
 - A YAML rule file in `bundled-rules/`
-- An accompanying fixture in `tests/fixtures/<rule-id>/` with realistic output (success and error variants)
-- An integration test asserting expected reduction ratio and zero error-line drops
+- A fixture set under `tests/fixtures/<rule-id>/<scenario>/` with `input.txt` (captured raw output), `expected.txt` (filtered output), and `meta.yaml` (provenance), per [testing-rules](testing-rules.md). At minimum: one success-path scenario and one failure-path scenario.
+- An integration test asserting expected reduction ratio and zero error-line drops (run automatically via `cargo test --test bundled_rules`)
 - A short doc note in this file describing the trade-off being made
