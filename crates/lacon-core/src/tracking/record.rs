@@ -50,9 +50,16 @@ impl Tracker {
         project_store_raw: bool,
         user_store_raw: bool,
     ) -> Result<i64, TrackingError> {
-        let want_raw_insert = self.cfg_store_raw_outputs && raw_opt.is_some();
-        let raw_output_id: Option<i64> = if want_raw_insert {
-            // D-15: privacy warning trigger BEFORE the first raw_outputs INSERT.
+        // D-15: privacy warning fires whenever store_raw_outputs is enabled,
+        // INDEPENDENT of whether raw bytes are captured this invocation. The
+        // user opted in by flipping the config flag — they need to know
+        // immediately, not "next time bytes happen to be captured." Phase 4's
+        // raw-byte capture path lands later, but SC2 requires the warning to
+        // be reachable end-to-end via CLI as soon as the flag flips
+        // (REQ-tracking-privacy-warning, Plan 06 Issue #9). Gating on
+        // `raw_opt.is_some()` would silently delay the warning until Phase 4
+        // wires the bytes — that breaks the v1 SC2 contract.
+        if self.cfg_store_raw_outputs {
             if let Some((cfg_path, marker_path)) = privacy::resolve_marker_path(
                 project_root,
                 user_config_dir,
@@ -61,7 +68,10 @@ impl Tracker {
             ) {
                 privacy::warn_once_if_needed(&cfg_path, &marker_path)?;
             }
+        }
 
+        let want_raw_insert = self.cfg_store_raw_outputs && raw_opt.is_some();
+        let raw_output_id: Option<i64> = if want_raw_insert {
             let raw = raw_opt.expect("guarded by want_raw_insert");
             Some(self.insert_raw_output(raw, meta.ts_unix_ms)?)
         } else {

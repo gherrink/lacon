@@ -21,3 +21,6 @@ assert_cmd = { workspace = true }
 predicates = { workspace = true }
 tempfile = { workspace = true }
 test_emitter = { path = "../../bin/test_emitter" }
+# Phase 2 Plan 06: tracking e2e tests open the DB via rusqlite to assert
+# row contents, view queryability, and PRAGMA state.
+rusqlite = { workspace = true }

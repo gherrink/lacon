@@ -1046,6 +1046,7 @@ dependencies = [
  "lacon-core",
  "predicates",
  "regex",
+ "rusqlite",
  "tempfile",
  "test_emitter",
 ]
