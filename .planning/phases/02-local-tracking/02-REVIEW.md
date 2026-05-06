@@ -1,15 +1,27 @@
 ---
 phase: 02
-status: findings
+status: partial-fixed
 depth: standard
 critical_count: 0
 warning_count: 5
+warning_fixed: 4
+warning_deferred: 1
 info_count: 6
 files_reviewed: 22
 date: 2026-05-06
+fix_applied: 2026-05-06
 ---
 
 # Phase 2: Local Tracking — Code Review Report
+
+> **Fix status (2026-05-06):**
+> - WR-01 — DEFERRED (requires `load_layered` API change; awaiting human decision)
+> - WR-02 — FIXED (commit a53b345)
+> - WR-03 — FIXED (commit ab2fdd8) + new regression test
+> - WR-04 — FIXED (commit 5bc2308)
+> - WR-05 — FIXED (commit 1e15395)
+> - Tests: 219 passed (218 baseline + 1 new for WR-03 skew)
+> - Info findings: not addressed (out of scope for this fix pass).
 
 ## Summary
 
