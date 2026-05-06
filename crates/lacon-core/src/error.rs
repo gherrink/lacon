@@ -108,7 +108,21 @@ pub enum RuntimeError {
         function: String,
         detail: String,
     },
-    // PLAN-05 will add subprocess/IO variants here.
+    /// Failed to spawn the subprocess.
+    #[error("failed to spawn subprocess `{program}`: {source}")]
+    SpawnFailed {
+        program: String,
+        source: std::io::Error,
+    },
+    /// I/O error in the runtime (pipe read, wait, or sink write).
+    #[error("io error in runtime: {source}")]
+    IoError { source: std::io::Error },
+    /// Subprocess was killed by a signal.
+    #[error("subprocess killed by signal {signal}")]
+    SubprocessKilled { signal: i32 },
+    /// `argv` passed to `Runner::run` was empty.
+    #[error("argv was empty")]
+    EmptyArgv,
 }
 
 impl ValidationError {
