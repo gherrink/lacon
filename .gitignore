@@ -1,2 +1,9 @@
 .claude/settings.local.json
 .claude/hooks/probe-log/
+
+# Rust build artifacts
+/target
+**/*.rs.bk
+.idea/
+.vscode/
+*.swp
