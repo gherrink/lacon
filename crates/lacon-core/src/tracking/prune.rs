@@ -59,8 +59,43 @@ pub fn prune_if_due(
         .and_then(|s| s.parse::<i64>().ok())
         .unwrap_or(0);
 
-    // Throttle gate: if less than 24h since last prune, skip.
-    if now_i64 - last < PRUNE_THROTTLE_MS {
+    // WR-03 fix: clock-skew defensive throttle.
+    //
+    // If `last > now_i64`, the recorded "last prune" timestamp is in the
+    // future relative to wall-clock now. This happens when:
+    //   - a sibling `lacon run` from a machine with a fast clock wrote
+    //     `last_pruned_ts`, then the local clock corrected backward;
+    //   - a user manually edited `lacon_meta`;
+    //   - the system clock was briefly advanced (NTP misconfig, VM
+    //     time-drift) and then pulled back.
+    //
+    // The previous formulation `now_i64 - last < PRUNE_THROTTLE_MS` produced
+    // a NEGATIVE number in this case, which is < PRUNE_THROTTLE_MS, so prune
+    // was skipped — for as long as ~N hours after a correction of N hours.
+    // The fix:
+    //   1. Detect the skew (`last > now_i64`).
+    //   2. Re-anchor `last_pruned_ts` to `now_ms` and short-circuit Ok(()).
+    //      We do NOT run DELETEs this invocation: the anchor write is the
+    //      recovery; the next invocation 24h later runs DELETEs normally.
+    //      This avoids a "double prune" if the next invocation comes
+    //      seconds after the correction.
+    //   3. Use saturating_sub on the elapsed math to defend against any
+    //      large-u64 cast surprises (e.g., a future test passing
+    //      now_ms near u64::MAX).
+    if last > now_i64 {
+        // Re-anchor; best-effort write — failure here is harmless (the next
+        // invocation will detect skew again and try again).
+        let _ = conn.execute(
+            "UPDATE lacon_meta SET value = ?1 WHERE key = 'last_pruned_ts'",
+            params![now_ms.to_string()],
+        );
+        return Ok(());
+    }
+
+    // Throttle gate: if less than 24h since last prune, skip. Saturating
+    // subtraction defends against negative results from extreme `now_ms`
+    // values (defensive — production now_ms is always far below i64::MAX).
+    if now_i64.saturating_sub(last) < PRUNE_THROTTLE_MS {
         return Ok(());
     }
 

@@ -171,6 +171,42 @@ fn prune_runs_after_exactly_24h() {
 }
 
 #[test]
+fn prune_skew_future_last_pruned_ts_re_anchors_no_lockout() {
+    // WR-03 regression: if `last_pruned_ts` is in the future relative to
+    // `now_ms` (clock corrected backward, sibling on a fast clock, user
+    // edit), the previous code computed `now - last < THROTTLE` and
+    // skipped prune for ~N hours after the correction. The fix re-anchors
+    // `last_pruned_ts` to `now_ms` immediately (without running DELETEs)
+    // and short-circuits Ok(()). The NEXT invocation 24h later runs
+    // DELETEs normally.
+    let conn = migrated_conn();
+    let now = FIXED_NOW_MS;
+    let retention = default_retention();
+
+    // last_pruned_ts is 1h IN THE FUTURE relative to `now`.
+    let one_hour_future = (now + 3_600_000).to_string();
+    conn.execute(
+        "UPDATE lacon_meta SET value = ?1 WHERE key = 'last_pruned_ts'",
+        params![one_hour_future],
+    )
+    .unwrap();
+
+    // Insert an OLD row that *would* be deleted if prune ran.
+    insert_inv(&conn, 1, now - 31 * ONE_DAY_MS);
+
+    prune_if_due(&conn, &retention, now as u64).expect("ok");
+
+    // Skew detected → re-anchor last_pruned_ts to now, do NOT run DELETEs.
+    // (Old row is still present; the recovery is the anchor write.)
+    assert_eq!(count(&conn, "invocations"), 1, "skew: DELETEs deferred to next run");
+    assert_eq!(
+        last_pruned_ts(&conn),
+        now,
+        "skew: last_pruned_ts re-anchored to now to recover"
+    );
+}
+
+#[test]
 fn prune_with_corrupted_last_pruned_ts_treats_as_zero() {
     let conn = migrated_conn();
     // Corrupt the seed to a non-numeric string.
