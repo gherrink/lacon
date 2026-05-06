@@ -2,8 +2,11 @@
 //!
 //! `validate_file(path)` reads a YAML file, introspects its top-level keys, and
 //! dispatches to the rule validator or config validator (D-17):
-//! - Top-level `id` AND `match` both present → rule file → rule validator.
+//! - Top-level `id` present → rule file → rule validator (regardless of `match:`).
 //! - Anything else → config file → config validator.
+//!
+//! ADR-0012: child rules that inherit `match:` via `extends:` are valid rule files
+//! without a top-level `match:` key.  Routing on `has_id` alone covers both cases.
 //!
 //! Returns an empty `Vec<ValidationError>` on success (no errors found).
 //!
@@ -30,9 +33,13 @@ use crate::rules::loader::parse_one;
 
 /// Content-dispatched validation entry point. Returns empty `Vec` on success.
 ///
-/// Dispatch logic (D-17):
-/// - Top-level `id` AND `match` → validate as rule file.
+/// Dispatch logic (D-17, CR-02 fix):
+/// - Top-level `id` present → validate as rule file.
 /// - Otherwise → validate as config file.
+///
+/// Note: `match:` is NOT required for routing because ADR-0012 child rules
+/// inherit `match:` from their parent via `extends:` and therefore have no
+/// top-level `match:` key.  Routing on `has_id` alone covers both cases.
 ///
 /// Neither path falls back to defaults on malformed input (D-17: "reject malformed").
 pub fn validate_file(path: &Path) -> Vec<ValidationError> {
@@ -41,15 +48,15 @@ pub fn validate_file(path: &Path) -> Vec<ValidationError> {
         Err(e) => return vec![ValidationError::Io { path: path.to_owned(), source: e }],
     };
 
-    // Use TopLevelKeyProbe to detect `id` and `match` keys (WAVE-0 FINDING pattern).
+    // Use TopLevelKeyProbe to detect `id` key (WAVE-0 FINDING pattern).
     // This avoids `serde_saphyr::Value` which does not exist in 0.0.26.
     let probe = match probe_top_level_keys(&content) {
         Ok(p)  => p,
         Err(e) => return vec![e],
     };
 
-    if probe.has_id && probe.has_match {
-        // Rule file path.
+    if probe.has_id {
+        // Rule file path (has_id alone is the routing criterion per ADR-0012).
         validate_rule(path, &content)
     } else {
         // Config file path.
@@ -61,8 +68,12 @@ pub fn validate_file(path: &Path) -> Vec<ValidationError> {
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 /// Probe struct for top-level key presence (WAVE-0 FINDING TopLevelKeyProbe pattern).
+///
+/// `has_match` is retained for potential future use (e.g., warning when a
+/// non-extends rule omits `match:`), but is not used for dispatch routing.
 struct TopLevelProbe {
     has_id:    bool,
+    #[allow(dead_code)]
     has_match: bool,
 }
 
@@ -195,5 +206,30 @@ pipeline:
         std::fs::write(&path, "defaults:\n  max_bytes: 4096\n").unwrap();
         let errs = validate_file(&path);
         assert!(errs.is_empty(), "valid config should have no errors: {:?}", errs);
+    }
+
+    #[test]
+    fn dispatch_extend_only_rule_routed_to_rule_validator() {
+        // ADR-0012 CR-02: a rule with `id` + `extends` but NO top-level `match:`
+        // must be routed to the rule validator, not the config validator.
+        // Previously this was misrouted because dispatch required `has_id && has_match`.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("child-rule.yaml");
+        std::fs::write(&path, r#"id: cargo-build-quiet
+extends: cargo-build-base
+pipeline:
+  - strip_ansi
+"#).unwrap();
+        let errs = validate_file(&path);
+        // The rule is structurally valid (id, extends, pipeline) — schema should
+        // accept it even though parse_one cannot resolve the parent (no parent file).
+        // The key assertion: it must NOT fail with UnknownKey (which would only happen
+        // if it were misrouted to the config validator, which rejects `id`, `extends`,
+        // and `pipeline` as unknown config keys).
+        let misrouted = errs.iter().any(|e| matches!(e, ValidationError::UnknownKey { .. }));
+        assert!(
+            !misrouted,
+            "extend-only rule must NOT produce UnknownKey (would indicate misrouting to config validator): {errs:?}"
+        );
     }
 }
