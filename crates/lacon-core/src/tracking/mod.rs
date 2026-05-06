@@ -16,8 +16,14 @@
 //! `lacon validate`, and `lacon doctor` MUST NOT call into this module.
 
 pub mod normalize;
+pub mod migrations;
+pub mod privacy;
+pub mod health;
+pub mod prune;
+pub mod record;
 
 pub use normalize::normalize;
+pub use migrations::migrate;
 
 /// Raw subprocess output captured for `raw_outputs` storage (D-01).
 /// Populated by `lacon-cli::commands::run` only when `cfg.store_raw_outputs == true`.
