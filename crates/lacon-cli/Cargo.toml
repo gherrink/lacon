@@ -13,6 +13,7 @@ path = "src/main.rs"
 lacon-core = { path = "../lacon-core" }
 clap = { workspace = true }
 anyhow = { workspace = true }
+regex = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = { workspace = true }

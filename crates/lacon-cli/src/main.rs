@@ -1,6 +1,20 @@
-//! lacon CLI entry — clap derive surface filled by PLAN-06.
+//! lacon CLI entry point — clap derive surface, 6-subcommand dispatch.
+
+mod cli;
+mod commands;
+
+use cli::{Cli, CliCommand};
+use clap::Parser;
 
 fn main() -> anyhow::Result<()> {
-    println!("lacon v0.1.0 (skeleton — Phase 1 in progress)");
-    Ok(())
+    let cli = Cli::parse();
+    let exit_code = match cli.command {
+        CliCommand::Run { rule, argv } => commands::run::execute(rule, argv)?,
+        CliCommand::Validate { path } => commands::validate::execute(&path)?,
+        CliCommand::Init => commands::init::execute()?,
+        CliCommand::Stats { .. } => commands::stats::execute()?,
+        CliCommand::Explain { .. } => commands::explain::execute()?,
+        CliCommand::Doctor => commands::doctor::execute()?,
+    };
+    std::process::exit(exit_code);
 }

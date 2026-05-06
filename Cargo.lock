@@ -992,6 +992,7 @@ dependencies = [
  "clap",
  "lacon-core",
  "predicates",
+ "regex",
  "tempfile",
 ]
 
