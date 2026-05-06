@@ -3,4 +3,4 @@ output line 02: some content here
 output line 03: some content here
 output line 04: some content here
 output line 05: some content here
-[lacon: truncated, 34 more bytes dropped]
+[lacon: truncated, 510 more bytes dropped]
