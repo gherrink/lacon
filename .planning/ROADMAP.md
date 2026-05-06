@@ -35,7 +35,7 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
 - [x] 01-03-PLAN.md — Rule loader: schema + extends flatten + lacon validate dispatch + bundled embedding
 - [x] 01-04-PLAN.md — Starlark post_process host (hermetic) + Pipeline integration
 - [x] 01-05-PLAN.md — lacon run runtime: subprocess merge, dual-buffer, on_error swap, bypass, signal forwarding
-- [ ] 01-06-PLAN.md — CLI surface: clap derive, lacon run + lacon validate wiring, 6-command cap
+- [x] 01-06-PLAN.md — CLI surface: clap derive, lacon run + lacon validate wiring, 6-command cap
 - [ ] 01-07-PLAN.md — End-to-end integration tests + cold-start probe + benchmark findings
 
 **Implementation-time decisions to settle in this phase** (deferred-to-prototyping per `docs/open-questions.md`):
