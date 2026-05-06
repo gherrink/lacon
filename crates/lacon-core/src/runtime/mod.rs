@@ -193,7 +193,26 @@ impl Runner {
         // Install a watcher thread that forwards SIGTERM/SIGINT to the child PID.
         // The stop_flag is set after child.wait() to allow the watcher to exit
         // cleanly without hanging on Signals::forever().
-        let child_pid = child.id() as i32;
+        //
+        // WR-03: child.id() returns u32. The cast to i32 is safe on all supported
+        // platforms (macOS and Linux): Linux's default PID_MAX_LIMIT is 4,194,304
+        // (2^22), well within i32::MAX (2,147,483,647 = 2^31 - 1). Systems with
+        // custom kernel.pid_max > 4194304 are not officially supported by v1.
+        // If the cast would overflow (u32 value > i32::MAX), we log a warning and
+        // skip signal forwarding rather than sending a signal to the wrong PID.
+        let child_pid_u32 = child.id();
+        let child_pid = match i32::try_from(child_pid_u32) {
+            Ok(pid) => pid,
+            Err(_) => {
+                eprintln!(
+                    "lacon: warning: subprocess PID {} exceeds i32::MAX; \
+                     signal forwarding disabled for this process",
+                    child_pid_u32
+                );
+                // Use -1 as a sentinel — install_signal_forwarder will not forward.
+                -1
+            }
+        };
         let (signal_handle, signal_stop) = install_signal_forwarder(child_pid);
 
         // ─── Reader thread (D-10, Pitfall 2) ─────────────────────────────
@@ -431,14 +450,19 @@ fn install_signal_forwarder(child_pid: i32) -> (thread::JoinHandle<()>, Arc<Atom
                 break;
             }
             // Poll without blocking — pending() returns immediately.
-            for sig in signals.pending() {
-                let s = match sig {
-                    SIGTERM => Signal::SIGTERM,
-                    SIGINT => Signal::SIGINT,
-                    _ => continue,
-                };
-                // T-05-09: kill() may return ESRCH if child already exited — benign.
-                let _ = kill(Pid::from_raw(child_pid), s);
+            // WR-03: child_pid == -1 is the sentinel set when the PID overflowed
+            // i32::MAX at spawn time. In that case, skip signal forwarding entirely
+            // to avoid kill(-1, sig) which would broadcast to all processes.
+            if child_pid > 0 {
+                for sig in signals.pending() {
+                    let s = match sig {
+                        SIGTERM => Signal::SIGTERM,
+                        SIGINT => Signal::SIGINT,
+                        _ => continue,
+                    };
+                    // T-05-09: kill() may return ESRCH if child already exited — benign.
+                    let _ = kill(Pid::from_raw(child_pid), s);
+                }
             }
             thread::sleep(std::time::Duration::from_millis(50));
         }
