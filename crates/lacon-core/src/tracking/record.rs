@@ -120,10 +120,18 @@ impl Tracker {
             ) VALUES (?1,?2,?3,?4, ?5,?6,?7,?8, ?9,?10, ?11,?12,?13, ?14,?15,?16, ?17)",
         )?;
 
+        // WR-05 fix: previous code used `p.to_str()` which returned None for
+        // any path containing non-UTF8 bytes (legal on Linux), causing the
+        // row to be inserted with project_path=NULL. Such rows then fall out
+        // of `v_project_savings` (GROUP BY project_path) — silent data loss
+        // on the analytics path. Use `to_string_lossy()` instead: invalid
+        // sequences are replaced with U+FFFD but the path is still grouped
+        // and visible in `lacon stats`. A schema change to BLOB would be
+        // pure-correct but is out of scope for v1.
         let project_path_str: Option<String> = meta
             .project_path
             .as_ref()
-            .and_then(|p| p.to_str().map(|s| s.to_string()));
+            .map(|p| p.to_string_lossy().into_owned());
         let rule_source_value: Option<&'static str> =
             meta.rule_source.as_ref().map(rule_source_str);
 
