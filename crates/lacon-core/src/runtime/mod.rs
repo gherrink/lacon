@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::sync::{
-    atomic::{AtomicBool, AtomicI32, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc,
 };
 use std::thread;
@@ -201,7 +201,7 @@ impl Runner {
         // `lines()` iterator method which panics on non-UTF8 input (Pitfall 2).
         // Per-line cap: MAX_LINE_BYTES (T-05-04 DoS defense; not a total-output cap).
         let (tx, rx) = unbounded::<String>();
-        let raw_byte_counter = Arc::new(AtomicI32::new(0));
+        let raw_byte_counter = Arc::new(AtomicUsize::new(0));
         let raw_byte_counter_thread = raw_byte_counter.clone();
 
         let reader_handle = thread::spawn(move || -> std::io::Result<()> {
@@ -213,7 +213,7 @@ impl Runner {
                 if n == 0 {
                     break; // EOF — all writers dropped (including child)
                 }
-                raw_byte_counter_thread.fetch_add(n as i32, Ordering::Relaxed);
+                raw_byte_counter_thread.fetch_add(n, Ordering::Relaxed);
 
                 // Per-line DoS defense: cap a SINGLE line at MAX_LINE_BYTES.
                 // This is NOT a total-output cap (Stage::MaxBytes owns that).
@@ -337,7 +337,7 @@ impl Runner {
         }
 
         let byte_counts = ByteCounts {
-            raw_stdout_bytes: raw_byte_counter.load(Ordering::Relaxed) as usize,
+            raw_stdout_bytes: raw_byte_counter.load(Ordering::Relaxed),
             raw_stderr_bytes: 0, // merged single stream in v1
             filtered_bytes: bytes_written,
         };
