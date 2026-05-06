@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: Phase 1 context gathered (assumptions mode)
-last_updated: "2026-05-06T06:02:09.778Z"
-last_activity: 2026-05-06 — Roadmap created from `.planning/intel/` synthesis (24 docs, 13 ADRs locked, 36 v1 requirements mapped, 0 conflicts blocking).
+status: executing
+stopped_at: "Completed 01-01-PLAN.md (workspace scaffolding + Wave 0 smoke tests)"
+last_updated: "2026-05-06T07:56:41.369Z"
+last_activity: 2026-05-06
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 7
+  completed_plans: 1
+  percent: 14
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-06)
 
 **Core value:** Reduce the bytes an AI coding assistant ingests from bash output by 30–70% without dropping signal — locally, with sub-10ms cold start, and a YAML rule per command.
-**Current focus:** Phase 1 — Engine core & `lacon run` wrapper.
+**Current focus:** Phase 01 — engine-core-lacon-run-wrapper
 
 ## Current Position
 
-Phase: 1 of 6 (Engine core & `lacon run` wrapper)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-05-06 — Roadmap created from `.planning/intel/` synthesis (24 docs, 13 ADRs locked, 36 v1 requirements mapped, 0 conflicts blocking).
+Phase: 01 (engine-core-lacon-run-wrapper) — EXECUTING
+Plan: 2 of 7
+Status: Ready to execute
+Last activity: 2026-05-06
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 14%
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: —
 
 *Updated after each plan completion.*
+| Phase 01-engine-core-lacon-run-wrapper P01 | 11min | 3 tasks | 22 files |
 
 ## Accumulated Context
 
@@ -62,6 +63,9 @@ Full decision log lives in PROJECT.md "Key Decisions" (13 LOCKED ADRs). Recent d
 - ADR-0013 (2026-05-05): Filter via `PreToolUse`-rewritten subprocess wrapper. `lacon run` is now production hot path — cold-start budget is load-bearing.
 - ADR-0008 (locked): Aggregated `post_process` Starlark, not per-line. Constrains Phase 1 Starlark stage design.
 - ADR-0005 (locked): Streaming-first output processing. Native primitives are line-by-line transformers; memory bounded by largest stateful primitive plus `max_bytes` cap.
+- PLAN-01 (2026-05-06): `serde_saphyr::Value` does NOT exist in 0.0.26. PLAN-03 must use `TopLevelKeyProbe` with `Option<serde::de::IgnoredAny>` for D-17 content dispatch. Validated by `wave0_smoke.rs::smoke_serde_saphyr_value_dispatch`.
+- PLAN-01 (2026-05-06): `starlark` 0.13 compiles under workspace MSRV 1.80 — confirmed by Wave 0 smoke test.
+- PLAN-01 (2026-05-06): `signal-hook` declared in `[workspace.dependencies]` AND `lacon-core/Cargo.toml [dependencies]`; PLAN-05 inherits via `{ workspace = true }` without editing either Cargo.toml.
 
 ### Pending Todos
 
@@ -86,6 +90,6 @@ None blocking. Three deferred-to-prototyping open questions assigned to phases a
 
 ## Session Continuity
 
-Last session: 2026-05-06T06:02:09.772Z
+Last session: 2026-05-06T07:56:41.362Z
 Stopped at: Phase 1 context gathered (assumptions mode)
-Resume file: .planning/phases/01-engine-core-lacon-run-wrapper/01-CONTEXT.md
+Resume file: None

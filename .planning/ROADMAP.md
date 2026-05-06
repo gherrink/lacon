@@ -30,7 +30,7 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
   4. `lacon validate <path>` accepts both rule files and `config.yaml` files, dispatches by content (`id`+`match` → rule), and rejects invalid regex / unknown primitive / circular `extends` / missing referenced Starlark file at load time without falling back to defaults.
   5. The `extends` directive prepends the parent's pipeline to the child's, inherits scalar fields the child omits, flattens single-level chains at load time, and rejects cycles.
 **Plans**: 7 plans
-- [ ] 01-01-PLAN.md — Workspace scaffolding & cargo check green
+- [x] 01-01-PLAN.md — Workspace scaffolding & cargo check green
 - [ ] 01-02-PLAN.md — Pipeline core: Stage enum + 10 native primitives + golden fixtures
 - [ ] 01-03-PLAN.md — Rule loader: schema + extends flatten + lacon validate dispatch + bundled embedding
 - [ ] 01-04-PLAN.md — Starlark post_process host (hermetic) + Pipeline integration
@@ -107,7 +107,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 5 (bundl
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Engine core & `lacon run` wrapper | 0/7 | Not started | - |
+| 1. Engine core & `lacon run` wrapper | 1/7 | In Progress|  |
 | 2. Local tracking | 0/TBD | Not started | - |
 | 3. Claude Code adapter & `lacon init` | 0/TBD | Not started | - |
 | 4. CLI completion (`stats`, `explain`, `doctor`) | 0/TBD | Not started | - |
