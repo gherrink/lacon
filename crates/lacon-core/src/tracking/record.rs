@@ -70,12 +70,17 @@ impl Tracker {
             }
         }
 
-        let want_raw_insert = self.cfg_store_raw_outputs && raw_opt.is_some();
-        let raw_output_id: Option<i64> = if want_raw_insert {
-            let raw = raw_opt.expect("guarded by want_raw_insert");
-            Some(self.insert_raw_output(raw, meta.ts_unix_ms)?)
-        } else {
-            None
+        // WR-04 fix: previous code had `let raw = raw_opt.expect(...)` inside
+        // an `if want_raw_insert` branch — correct, but reliant on a *logical*
+        // invariant the type system could not enforce. A future change to the
+        // gate or the destructuring side could silently break it, panicking on
+        // the hot `lacon run` path. Best-effort error handling in
+        // `record_invocation` matches `Err(TrackingError)` only — a panic
+        // would surface to end users. Pattern-match on (cfg, raw_opt)
+        // directly to make the structure obvious and remove the panic surface.
+        let raw_output_id: Option<i64> = match (self.cfg_store_raw_outputs, raw_opt) {
+            (true, Some(raw)) => Some(self.insert_raw_output(raw, meta.ts_unix_ms)?),
+            _ => None,
         };
 
         let inv_id = self.insert_invocation(meta, raw_output_id)?;
