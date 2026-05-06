@@ -80,6 +80,37 @@ pub enum ValidationError {
     },
 }
 
+/// Runtime error for Starlark `post_process` execution and (in PLAN-05) subprocess I/O.
+///
+/// Variants follow the categories in the PLAN-04 interface spec.
+/// `StarlarkResourceLimit` exists for forward-compat; not enforced in v1.
+#[derive(thiserror::Error, Debug)]
+pub enum RuntimeError {
+    #[error("starlark parse error in {path}: {message}")]
+    StarlarkParseError {
+        path: std::path::PathBuf,
+        message: String,
+    },
+    #[error("starlark evaluation error in {path}: {message}")]
+    StarlarkEvalError {
+        path: std::path::PathBuf,
+        message: String,
+    },
+    #[error("starlark function `{function}` in {path} returned {got}, expected list[str]")]
+    StarlarkResultTypeError {
+        path: std::path::PathBuf,
+        function: String,
+        got: String,
+    },
+    #[error("starlark function `{function}` in {path} exceeded resource limit: {detail}")]
+    StarlarkResourceLimit {
+        path: std::path::PathBuf,
+        function: String,
+        detail: String,
+    },
+    // PLAN-05 will add subprocess/IO variants here.
+}
+
 impl ValidationError {
     /// Extract the path from any variant. Useful for tests.
     pub fn path(&self) -> &std::path::Path {
