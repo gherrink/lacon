@@ -466,11 +466,7 @@ fn find_in_bundled(rule_id: &str, child_path: &Path) -> Option<Result<RuleFile, 
             None => continue,
         };
         if shallow_probe_id(&content).as_deref() == Some(rule_id) {
-            let synthetic_path = PathBuf::from("bundled").join(&name);
-            return Some(parse_one(&content, child_path).map(|r| {
-                // Re-path the parse error to the child for clarity.
-                let _ = synthetic_path; r
-            }));
+            return Some(parse_one(&content, child_path));
         }
     }
     None

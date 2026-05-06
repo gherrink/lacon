@@ -1,0 +1,6 @@
+retention:
+  invocations_days: 90
+  raw_outputs_days: 7
+defaults:
+  max_bytes: 16384
+store_raw_outputs: false

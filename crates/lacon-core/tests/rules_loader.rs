@@ -69,7 +69,7 @@ fn mtime_invalidation() {
     assert_eq!(r1.success_pipeline.stage_count(), 3);
 
     // Touch the file with modified content (add an extra drop_regex stage).
-    let new_content = format!("{}\n  - drop_regex: '^extra'", content.trim_end());
+    let _new_content = format!("{}\n  - drop_regex: '^extra'", content.trim_end());
     // Sleep a tiny bit to guarantee mtime changes (filesystem resolution may be 1s).
     std::thread::sleep(std::time::Duration::from_millis(50));
     // Overwrite with same content + extra stage.

@@ -1,0 +1,4 @@
+retention:
+  invocations_days: 7
+defaults:
+  max_bytes: 8192
