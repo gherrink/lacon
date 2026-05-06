@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 01-01-PLAN.md (workspace scaffolding + Wave 0 smoke tests)"
-last_updated: "2026-05-06T07:56:41.369Z"
+stopped_at: Phase 1 context gathered (assumptions mode)
+last_updated: "2026-05-06T08:10:48.426Z"
 last_activity: 2026-05-06
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 7
-  completed_plans: 1
-  percent: 14
+  completed_plans: 2
+  percent: 29
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Phase: 01 (engine-core-lacon-run-wrapper) — EXECUTING
-Plan: 2 of 7
+Plan: 3 of 7
 Status: Ready to execute
 Last activity: 2026-05-06
 
-Progress: [█░░░░░░░░░] 14%
+Progress: [███░░░░░░░] 29%
 
 ## Performance Metrics
 
@@ -66,6 +66,9 @@ Full decision log lives in PROJECT.md "Key Decisions" (13 LOCKED ADRs). Recent d
 - PLAN-01 (2026-05-06): `serde_saphyr::Value` does NOT exist in 0.0.26. PLAN-03 must use `TopLevelKeyProbe` with `Option<serde::de::IgnoredAny>` for D-17 content dispatch. Validated by `wave0_smoke.rs::smoke_serde_saphyr_value_dispatch`.
 - PLAN-01 (2026-05-06): `starlark` 0.13 compiles under workspace MSRV 1.80 — confirmed by Wave 0 smoke test.
 - PLAN-01 (2026-05-06): `signal-hook` declared in `[workspace.dependencies]` AND `lacon-core/Cargo.toml [dependencies]`; PLAN-05 inherits via `{ workspace = true }` without editing either Cargo.toml.
+- [Phase ?]: ANSI OSC regex ordering bug fixed
+- [Phase ?]: MaxBytes N = current overflowing line bytes only (streaming model; future lines unknown)
+- [Phase ?]: Integration test fixture path: CARGO_MANIFEST_DIR + '../..' for workspace-root fixtures
 
 ### Pending Todos
 
@@ -90,6 +93,6 @@ None blocking. Three deferred-to-prototyping open questions assigned to phases a
 
 ## Session Continuity
 
-Last session: 2026-05-06T07:56:41.362Z
+Last session: 2026-05-06T08:10:31.333Z
 Stopped at: Phase 1 context gathered (assumptions mode)
 Resume file: None
