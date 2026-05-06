@@ -1,0 +1,8 @@
+id: valid-simple
+description: A trivial rule
+match:
+  command: echo
+pipeline:
+  - strip_ansi
+  - drop_regex: '^npm warn'
+  - max_bytes: 1024

@@ -1,0 +1,4 @@
+id: cycle-b
+extends: cycle-a
+pipeline:
+  - strip_ansi

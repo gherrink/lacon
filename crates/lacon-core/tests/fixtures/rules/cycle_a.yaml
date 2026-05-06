@@ -1,0 +1,6 @@
+id: cycle-a
+extends: cycle-b
+match:
+  command: foo
+pipeline:
+  - strip_ansi

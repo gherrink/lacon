@@ -1,0 +1,7 @@
+id: bad-script
+match:
+  command: foo
+pipeline:
+  - script:
+      path: ./does_not_exist.star
+      function: process

@@ -1,0 +1,4 @@
+id: child
+extends: parent
+pipeline:
+  - drop_regex: '^Done'

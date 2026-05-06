@@ -1,0 +1,13 @@
+id: parent
+match:
+  command: pnpm
+  args_prefix: [install]
+pipeline:
+  - strip_ansi
+  - drop_regex: '^Lockfile'
+on_error:
+  pipeline:
+    - keep_regex: '(error|FAIL)'
+    - keep_tail:
+        lines: 50
+    - max_bytes: 8192

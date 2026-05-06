@@ -1,0 +1,5 @@
+id: bad-prim
+match:
+  command: foo
+pipeline:
+  - reverse_lines

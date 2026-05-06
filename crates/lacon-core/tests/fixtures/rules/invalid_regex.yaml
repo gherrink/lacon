@@ -1,0 +1,5 @@
+id: bad-regex
+match:
+  command: foo
+pipeline:
+  - drop_regex: '['
