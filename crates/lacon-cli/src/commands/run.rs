@@ -57,40 +57,69 @@ fn try_match_via_load_all(
     let candidates = loader.load_all()?;
     let prog_basename = argv[0].rsplit('/').next().unwrap_or(&argv[0]).to_owned();
     for r in candidates {
-        if rule_matches_argv(&r, &prog_basename, &argv[1..]) {
-            return Ok(Some(r));
+        match rule_matches_argv(&r, &prog_basename, &argv[1..]) {
+            Ok(true) => return Ok(Some(r)),
+            Ok(false) => continue,
+            Err(e) => return Err(vec![e]),
         }
     }
     Ok(None)
 }
 
-fn rule_matches_argv(r: &ResolvedRule, prog_basename: &str, args: &[String]) -> bool {
+/// Returns `Ok(true)` if the rule matches `(prog_basename, args)`.
+///
+/// WR-02 fix: `command_regex` is now compiled here with an explicit error path.
+/// In practice, `load_all()` already validates regexes via `compile_resolved`, so
+/// a compile failure here indicates a bug rather than a user error. The error is
+/// propagated rather than silently treated as a non-match, which would hide it.
+fn rule_matches_argv(
+    r: &ResolvedRule,
+    prog_basename: &str,
+    args: &[String],
+) -> Result<bool, ValidationError> {
     use lacon_core::rules::schema::MatchSpec;
-    fn matches(spec: &MatchSpec, prog: &str, args: &[String]) -> bool {
+    use std::path::PathBuf;
+
+    fn spec_matches(
+        spec: &MatchSpec,
+        prog: &str,
+        args: &[String],
+        rule_id: &str,
+    ) -> Result<bool, ValidationError> {
         if let Some(any) = &spec.any {
-            return any.iter().any(|s| matches(s, prog, args));
+            for s in any {
+                if spec_matches(s, prog, args, rule_id)? {
+                    return Ok(true);
+                }
+            }
+            return Ok(false);
         }
         if let Some(all) = &spec.all {
-            return all.iter().all(|s| matches(s, prog, args));
+            for s in all {
+                if !spec_matches(s, prog, args, rule_id)? {
+                    return Ok(false);
+                }
+            }
+            return Ok(true);
         }
         if let Some(cmd) = &spec.command {
             if cmd != prog {
-                return false;
+                return Ok(false);
             }
         }
         if let Some(prefix) = &spec.args_prefix {
             if args.len() < prefix.len() {
-                return false;
+                return Ok(false);
             }
             for (i, p) in prefix.iter().enumerate() {
                 if &args[i] != p {
-                    return false;
+                    return Ok(false);
                 }
             }
         }
         if let Some(contain) = &spec.args_contain {
             if !contain.iter().all(|c| args.iter().any(|a| a == c)) {
-                return false;
+                return Ok(false);
             }
         }
         if let Some(re_str) = &spec.command_regex {
@@ -99,19 +128,24 @@ fn rule_matches_argv(r: &ResolvedRule, prog_basename: &str, args: &[String]) -> 
                 joined.push(' ');
                 joined.push_str(a);
             }
-            if let Ok(re) = regex::Regex::new(re_str) {
-                if !re.is_match(&joined) {
-                    return false;
-                }
-            } else {
-                return false;
+            // WR-02: propagate compile errors instead of silently treating them
+            // as a non-match. If load_all() validated this regex at load time,
+            // this Err branch should be unreachable in practice.
+            let re = regex::Regex::new(re_str).map_err(|e| ValidationError::InvalidRegex {
+                path: PathBuf::from(format!("<rule:{rule_id}>")),
+                line: 0,
+                message: format!("command_regex compile error: {e}"),
+            })?;
+            if !re.is_match(&joined) {
+                return Ok(false);
             }
         }
-        true
+        Ok(true)
     }
+
     match &r.rule.match_spec {
-        Some(spec) => matches(spec, prog_basename, args),
-        None => false,
+        Some(spec) => spec_matches(spec, prog_basename, args, &r.id),
+        None => Ok(false),
     }
 }
 
