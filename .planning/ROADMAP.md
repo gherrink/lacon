@@ -57,7 +57,7 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
 - [x] 02-02-PLAN.md — Migrations runner + 0001_initial.sql byte-exact DDL + schema and views tests
 - [x] 02-03-PLAN.md — Privacy marker + warning text + health check probe + race-free integration tests
 - [x] 02-04-PLAN.md — Tracker::open with 0700 dir + 3 PRAGMAs (busy_timeout=200ms, foreign_keys=ON, journal_mode=WAL) + prune throttled by 24h
-- [ ] 02-05-PLAN.md — Tracker::record (raw_outputs gate + privacy trigger + invocations INSERT) + CLI wire-up in lacon-cli/src/commands/run.rs
+- [x] 02-05-PLAN.md — Tracker::record (raw_outputs gate + privacy trigger + invocations INSERT) + CLI wire-up in lacon-cli/src/commands/run.rs
 - [ ] 02-06-PLAN.md — End-to-end CLI tests + lazy-open invariants (--version, validate, doctor) + best-effort + cold-start bench
 
 ### Phase 3: Claude Code adapter & `lacon init`

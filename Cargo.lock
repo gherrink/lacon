@@ -1042,6 +1042,7 @@ dependencies = [
  "anyhow",
  "assert_cmd",
  "clap",
+ "etcetera",
  "lacon-core",
  "predicates",
  "regex",

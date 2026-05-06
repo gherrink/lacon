@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Plan 02-04 complete (Tracker::open + 3 PRAGMAs + 24h-throttled prune + 13 integration tests)
-last_updated: "2026-05-06T15:30:00.000Z"
+stopped_at: "Plan 02-05 complete (Tracker::record + lacon-cli wire-up + 7 integration tests)"
+last_updated: "2026-05-06T15:46:42.649Z"
 last_activity: 2026-05-06
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 14
-  completed_plans: 12
-  percent: 86
+  completed_plans: 13
+  percent: 93
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Phase: 02 (Local tracking) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-05-06
 
-Progress: [████████▌░] 86%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
@@ -62,6 +62,7 @@ Progress: [████████▌░] 86%
 | Phase 02-local-tracking P02 | 10min | 2 tasks tasks | 9 files files |
 | Phase 02-local-tracking PP03 | 6min | 2 tasks tasks | 3 files files |
 | Phase 02-local-tracking P04 | 12min | 3 tasks | 4 files |
+| Phase 02-local-tracking PP05 | 12min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -103,6 +104,9 @@ Full decision log lives in PROJECT.md "Key Decisions" (13 LOCKED ADRs). Recent d
 - [Phase ?]: [Phase 02-local-tracking PLAN-04]: 3-pragma contract order locked: busy_timeout=200ms (Duration::from_millis(200)) → set_db_config(SQLITE_DBCONFIG_ENABLE_FKEY, true) → pragma_update_and_check(None, journal_mode, WAL); debug_assert_eq verifies WAL accepted, not silently dropped
 - [Phase ?]: [Phase 02-local-tracking PLAN-04]: Rule 1 deviation — Plan's negative-side FK test ("fresh conn defaults to OFF") incorrect for our build (libsqlite3-sys 0.37 ships -DSQLITE_DEFAULT_FOREIGN_KEYS=1); reworked to sibling-toggle proof of per-connection independence (same approach as tracking_schema.rs::fk_silent_no_op_without_pragma)
 - [Phase ?]: [Phase 02-local-tracking PLAN-04]: prune_if_due uses unchecked_transaction() to operate on &Connection (not &mut), safe under single-threaded-per-process invariant; DELETE order raw_outputs → suspected_regressions → invocations minimizes ON DELETE SET NULL trigger fires
+- [Phase ?]: [Phase 02-local-tracking PLAN-05]: capture-before-move pattern locks rule_id+rule_source via .clone() in run_with_rule BEFORE Runner::new moves resolved (RuleSource is Clone NOT Copy at loader.rs:50; Issue #2 fix)
+- [Phase ?]: [Phase 02-local-tracking PLAN-05]: record_invocation calls config::load_layered(project, user) and reads cfg.store_raw_outputs+cfg.retention so SC2 (flip project config → marker+warning) is reachable end-to-end via the CLI (Issue #9 fix)
+- [Phase ?]: [Phase 02-local-tracking PLAN-05]: end-to-end smoke 'lacon run -- echo hi' against XDG-overridden tempdir DB measures ~40ms wall in debug build with DB creation+migration+prune+INSERT; row written with assistant='claude-code' (default), exit_code=0, raw_output_id=NULL — defaults correct
 
 ### Pending Todos
 
@@ -127,6 +131,6 @@ None blocking. Three deferred-to-prototyping open questions assigned to phases a
 
 ## Session Continuity
 
-Last session: 2026-05-06T15:30:00.000Z
-Stopped at: Plan 02-04 complete (Tracker::open + 3 PRAGMAs + 24h-throttled prune + 13 integration tests)
-Resume file: .planning/phases/02-local-tracking/02-05-PLAN.md
+Last session: 2026-05-06T15:46:42.643Z
+Stopped at: Plan 02-05 complete (Tracker::record + lacon-cli wire-up + 7 integration tests)
+Resume file: .planning/phases/02-local-tracking/02-06-PLAN.md
