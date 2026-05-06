@@ -15,7 +15,8 @@
     "auto_advance": false,
     "skip_discuss": false,
     "use_worktrees": true,
-    "research_before_questions": false
+    "research_before_questions": false,
+    "discuss_mode": "assumptions"
   },
   "model_profile": "balanced",
   "commit_docs": true,

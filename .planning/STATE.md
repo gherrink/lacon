@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 1 context gathered (assumptions mode)
-last_updated: "2026-05-06T08:10:48.426Z"
+stopped_at: Completed 01-03-PLAN.md
+last_updated: "2026-05-06T08:35:03.660Z"
 last_activity: 2026-05-06
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 7
-  completed_plans: 2
-  percent: 29
+  completed_plans: 3
+  percent: 43
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Phase: 01 (engine-core-lacon-run-wrapper) — EXECUTING
-Plan: 3 of 7
+Plan: 4 of 7
 Status: Ready to execute
 Last activity: 2026-05-06
 
-Progress: [███░░░░░░░] 29%
+Progress: [████░░░░░░] 43%
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [███░░░░░░░] 29%
 
 *Updated after each plan completion.*
 | Phase 01-engine-core-lacon-run-wrapper P01 | 11min | 3 tasks | 22 files |
+| Phase 01-engine-core-lacon-run-wrapper P03 | 150 | 3 tasks | 23 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,9 @@ Full decision log lives in PROJECT.md "Key Decisions" (13 LOCKED ADRs). Recent d
 - [Phase ?]: ANSI OSC regex ordering bug fixed
 - [Phase ?]: MaxBytes N = current overflowing line bytes only (streaming model; future lines unknown)
 - [Phase ?]: Integration test fixture path: CARGO_MANIFEST_DIR + '../..' for workspace-root fixtures
+- [Phase 01-engine-core-lacon-run-wrapper]: WAVE-0 FINDING confirmed: serde_saphyr::Value does NOT exist in 0.0.26 — use TopLevelKeyProbe pattern (Option<IgnoredAny> + flatten HashMap) for all YAML dispatch
+- [Phase 01-engine-core-lacon-run-wrapper]: StageSpec externally-tagged enum works with serde-saphyr 0.0.26 standard derive — no manual Deserialize impl needed for unit/newtype/struct-valued YAML forms
+- [Phase 01-engine-core-lacon-run-wrapper]: rust-embed: relative folder path resolves from CARGO_MANIFEST_DIR without interpolate-folder-path feature (Cargo.toml B1 freeze safe)
 
 ### Pending Todos
 
@@ -93,6 +97,6 @@ None blocking. Three deferred-to-prototyping open questions assigned to phases a
 
 ## Session Continuity
 
-Last session: 2026-05-06T08:10:31.333Z
-Stopped at: Phase 1 context gathered (assumptions mode)
+Last session: 2026-05-06T08:35:03.653Z
+Stopped at: Completed 01-03-PLAN.md
 Resume file: None

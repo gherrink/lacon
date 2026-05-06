@@ -32,7 +32,7 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
 **Plans**: 7 plans
 - [x] 01-01-PLAN.md — Workspace scaffolding & cargo check green
 - [x] 01-02-PLAN.md — Pipeline core: Stage enum + 10 native primitives + golden fixtures
-- [ ] 01-03-PLAN.md — Rule loader: schema + extends flatten + lacon validate dispatch + bundled embedding
+- [x] 01-03-PLAN.md — Rule loader: schema + extends flatten + lacon validate dispatch + bundled embedding
 - [ ] 01-04-PLAN.md — Starlark post_process host (hermetic) + Pipeline integration
 - [ ] 01-05-PLAN.md — lacon run runtime: subprocess merge, dual-buffer, on_error swap, bypass, signal forwarding
 - [ ] 01-06-PLAN.md — CLI surface: clap derive, lacon run + lacon validate wiring, 6-command cap
@@ -107,7 +107,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 5 (bundl
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Engine core & `lacon run` wrapper | 2/7 | In Progress|  |
+| 1. Engine core & `lacon run` wrapper | 3/7 | In Progress|  |
 | 2. Local tracking | 0/TBD | Not started | - |
 | 3. Claude Code adapter & `lacon init` | 0/TBD | Not started | - |
 | 4. CLI completion (`stats`, `explain`, `doctor`) | 0/TBD | Not started | - |
