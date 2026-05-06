@@ -53,7 +53,7 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
   3. The four required views (`v_unmatched_offenders`, `v_filtered_offenders`, `v_bypass_rate`, `v_project_savings`) exist in the schema and return non-error result sets when queried via `sqlite3` after a session of `lacon run` invocations.
   4. Startup pruning deletes `invocations` rows older than 30 days, `raw_outputs` rows older than 3 days, and `suspected_regressions` rows older than 30 days. Append-only numbered migrations are applied at startup; a project `config.yaml` containing a `retention.*` key fails validation with an error pointing at `~/.config/lacon/config.yaml`.
 **Plans**: 6 plans
-- [ ] 02-01-PLAN.md — Workspace deps + tracking module scaffold + InvocationMeta extension + TrackingError
+- [x] 02-01-PLAN.md — Workspace deps + tracking module scaffold + InvocationMeta extension + TrackingError
 - [ ] 02-02-PLAN.md — Migrations runner + 0001_initial.sql byte-exact DDL + schema and views tests
 - [ ] 02-03-PLAN.md — Privacy marker + warning text + health check probe + race-free integration tests
 - [ ] 02-04-PLAN.md — Tracker::open with 0700 dir + 3 PRAGMAs (busy_timeout=200ms, foreign_keys=ON, journal_mode=WAL) + prune throttled by 24h

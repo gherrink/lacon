@@ -29,7 +29,7 @@ Requirements for the v1 release. Each maps to exactly one phase in `.planning/RO
 ### Tracking
 
 - [ ] **REQ-tracking-sqlite-location**: SQLite database at `~/.local/share/lacon/history.db` with WAL mode and `0700` directory permissions. Schema migrations applied at startup (append-only). Pruning runs at startup. (ADR-0011, SPEC tracking-data-model.)
-- [ ] **REQ-tracking-schema**: Three tables — `invocations` (metadata), `raw_outputs` (bulk blobs, FK from invocations), `suspected_regressions` (cascade FK to invocations). Indexes and views ship as enumerated in `docs/specs/tracking-data-model.md`. Required views: `v_unmatched_offenders`, `v_filtered_offenders`, `v_bypass_rate`, `v_project_savings`.
+- [x] **REQ-tracking-schema**: Three tables — `invocations` (metadata), `raw_outputs` (bulk blobs, FK from invocations), `suspected_regressions` (cascade FK to invocations). Indexes and views ship as enumerated in `docs/specs/tracking-data-model.md`. Required views: `v_unmatched_offenders`, `v_filtered_offenders`, `v_bypass_rate`, `v_project_savings`.
 - [ ] **REQ-tracking-raw-outputs-default-off**: `raw_outputs` storage is OFF by default. Opt-in per project via `store_raw_outputs: true` in `.lacon/config.yaml`. (ADR-0009, SPEC tracking-data-model.)
 - [ ] **REQ-tracking-privacy-warning**: First-time enablement of `raw_outputs` (off → on transition) prints a one-time stderr privacy notice. Suppressed on subsequent invocations via a marker in the project config dir. No automatic redaction in v1 (deferred to backlog).
 - [ ] **REQ-tracking-retention-defaults**: Default retention — 30 days for `invocations` and `suspected_regressions`, 3 days for `raw_outputs`. Configurable in user config; `retention.*` keys are USER-ONLY (project files including a `retention` block fail validation).
@@ -180,7 +180,7 @@ Phase mappings populated during ROADMAP creation. 36/36 v1 requirements mapped, 
 | REQ-cli-run | Phase 1 | Complete |
 | REQ-cli-validate | Phase 1 | Complete |
 | REQ-tracking-sqlite-location | Phase 2 | Pending |
-| REQ-tracking-schema | Phase 2 | Pending |
+| REQ-tracking-schema | Phase 2 | Complete |
 | REQ-tracking-raw-outputs-default-off | Phase 2 | Pending |
 | REQ-tracking-privacy-warning | Phase 2 | Pending |
 | REQ-tracking-retention-defaults | Phase 2 | Pending |
