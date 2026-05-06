@@ -129,6 +129,7 @@ fn max_bytes_overflow_emits_byte_exact_truncation_marker() {
         cap: 200,
         written: 0,
         truncated: false,
+        dropped_bytes: 0,
     }]);
     let rule = make_rule(pipeline, None);
     let mut runner = Runner::new(rule, RunOptions::default());

@@ -547,6 +547,7 @@ pub fn compile_pipeline(
             cap: defaults_max_bytes,
             written: 0,
             truncated: false,
+            dropped_bytes: 0,
         });
     }
 
@@ -626,7 +627,7 @@ fn spec_to_stage(spec: StageSpec, source_path: &Path) -> Result<Stage, Validatio
             })
         }
 
-        StageSpec::MaxBytes(cap) => Ok(Stage::MaxBytes { cap, written: 0, truncated: false }),
+        StageSpec::MaxBytes(cap) => Ok(Stage::MaxBytes { cap, written: 0, truncated: false, dropped_bytes: 0 }),
 
         StageSpec::Script(ScriptSpec { path, .. }) => {
             // Validate the path (T-03-04) and then reject with a clear message.

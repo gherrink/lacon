@@ -157,6 +157,7 @@ fn max_bytes_fixture_truncates_byte_exact() {
             cap: 200,
             written: 0,
             truncated: false,
+            dropped_bytes: 0,
         }],
     );
     assert_eq!(actual, expected, "max_bytes: actual vs expected mismatch");

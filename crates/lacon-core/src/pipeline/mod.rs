@@ -263,6 +263,7 @@ mod tests {
             cap: 8,
             written: 0,
             truncated: false,
+            dropped_bytes: 0,
         }];
         let mut p = Pipeline::new(stages);
         let out = p.run(lines("abc\nabc\nabc"));

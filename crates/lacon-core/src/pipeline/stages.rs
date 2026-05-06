@@ -159,22 +159,27 @@ pub enum Stage {
     },
 
     /// Hard cap on total output size. Tracks bytes written; once a line would
-    /// exceed `cap`, emits the byte-exact truncation marker (D-08) and drops
-    /// all subsequent lines.
+    /// exceed `cap`, defers the byte-exact truncation marker (D-08) to `flush()`
+    /// after accumulating the full drop count across all remaining lines.
     ///
     /// # Truncation marker (D-08, byte-exact)
     /// `[lacon: truncated, N more bytes dropped]`
-    /// where `N` = bytes that would have been emitted (the overflowing line +
-    /// every subsequent line + their `\n` separators) but were dropped.
+    /// where `N` = total bytes dropped — the overflowing line plus every subsequent
+    /// line plus their `\n` separators.  Emitted at flush() once all lines are seen.
     ///
     /// # Fields
     /// - `cap`: byte cap (inclusive)
-    /// - `written`: bytes written so far (excluding trailing `\n`)
-    /// - `truncated`: true once the marker has been emitted
+    /// - `written`: bytes written so far (each line counted as `len + 1` for `\n`)
+    /// - `truncated`: true once the cap has been exceeded (first overflow seen)
+    /// - `dropped_bytes`: cumulative bytes of all dropped lines (CR-04)
     MaxBytes {
         cap: usize,
         written: usize,
         truncated: bool,
+        /// Cumulative bytes of all lines dropped past the cap.
+        /// Includes the `\n` that the runner appends to each line.
+        /// Emitted in flush() as the final `N` in the truncation marker.
+        dropped_bytes: usize,
     },
 }
 
@@ -380,26 +385,21 @@ impl Stage {
             }
 
             // ─── MaxBytes ───────────────────────────────────────────────────────────────
-            Stage::MaxBytes { cap, written, truncated } => {
+            // CR-04 fix: accumulate all dropped bytes in `dropped_bytes`; emit the
+            // truncation marker with the CUMULATIVE count in flush(), not here.
+            // This produces a byte-exact N per D-08 (first overflowing line + all
+            // subsequent lines, including their implicit \n separators).
+            Stage::MaxBytes { cap, written, truncated, dropped_bytes } => {
                 if *truncated {
-                    // Already emitted the marker — drop all subsequent lines.
+                    // Past the cap — accumulate this line's bytes into the running total.
+                    *dropped_bytes += line.len() + 1;
                     return;
                 }
                 // Account for the `\n` the runner appends when joining output.
                 let line_bytes = line.len() + 1;
                 if *written + line_bytes > *cap {
-                    // This line would overflow the cap.
-                    // Compute N = bytes that would have been written but were dropped.
-                    // That's the current line + any future lines — we can't know future
-                    // lines here, so N represents "at least" the current overflow.
-                    // The exact count is: (cap - written) bytes remain for content;
-                    // the current line + its \n contributes line_bytes.
-                    // Per D-08: N = bytes dropped starting from this line.
-                    // We emit the marker and track the delta so subsequent flush calls
-                    // add to it (but MaxBytes has no flush — the marker is emitted here).
-                    let delta = line_bytes; // at minimum the current overflowing line
-                    let marker = format!("[lacon: truncated, {} more bytes dropped]", delta);
-                    out.push(Cow::Owned(marker));
+                    // First line that overflows: begin accumulation — marker deferred to flush().
+                    *dropped_bytes += line_bytes;
                     *truncated = true;
                 } else {
                     *written += line_bytes;
@@ -444,8 +444,18 @@ impl Stage {
             }
 
             // ─── MaxBytes ───────────────────────────────────────────────────────────────
-            // No-op: the truncation marker is emitted in step(), not flush().
-            Stage::MaxBytes { .. } => {}
+            // CR-04 fix: emit the truncation marker here with the full cumulative
+            // dropped_bytes count.  Deferred from step() so the count covers ALL
+            // lines dropped past the cap (first overflowing line + all subsequent).
+            Stage::MaxBytes { truncated, dropped_bytes, .. } => {
+                if *truncated {
+                    let marker = format!(
+                        "[lacon: truncated, {} more bytes dropped]",
+                        dropped_bytes
+                    );
+                    out.push(Cow::Owned(marker));
+                }
+            }
 
             // All other stages are stateless (or state was already consumed in step).
             _ => {}
@@ -764,10 +774,11 @@ mod tests {
             cap: 8,
             written: 0,
             truncated: false,
+            dropped_bytes: 0,
         };
         let out = run_stage(&mut s, &["abc", "abc", "abc"]);
-        // First 2 fit (8 bytes); third overflows → marker
-        assert_eq!(out.len(), 3);
+        // First 2 fit (8 bytes); third overflows → marker emitted at flush
+        assert_eq!(out.len(), 3, "output: {:?}", out);
         assert_eq!(out[0], "abc");
         assert_eq!(out[1], "abc");
         assert!(out[2].starts_with("[lacon: truncated, "), "marker: {:?}", out[2]);
@@ -776,15 +787,17 @@ mod tests {
 
     #[test]
     fn max_bytes_truncation_marker_format() {
-        // D-08 + T-02-05: assert exact marker format string
+        // D-08 + T-02-05: assert exact marker format string.
+        // CR-04: marker is deferred to flush(), so we must run the full stage.
         let mut s = Stage::MaxBytes {
             cap: 5,
             written: 0,
             truncated: false,
+            dropped_bytes: 0,
         };
-        let mut out: LineOut = SmallVec::new();
-        stage_step_str(&mut s, "hello", &mut out); // 5+1=6 > 5 → overflow immediately
-        let marker = out[0].clone().into_owned();
+        let out = run_stage(&mut s, &["hello"]); // 5+1=6 > 5 → overflow; marker at flush
+        assert_eq!(out.len(), 1, "expected exactly 1 output line (the marker): {:?}", out);
+        let marker = &out[0];
         assert!(
             marker.starts_with("[lacon: truncated, "),
             "marker must start with '[lacon: truncated, ', got: {:?}",
@@ -803,11 +816,36 @@ mod tests {
             cap: 5,
             written: 0,
             truncated: false,
+            dropped_bytes: 0,
         };
         let out = run_stage(&mut s, &["hello", "world", "extra"]);
-        // "hello\n" = 6 > 5 → marker emitted on first line; subsequent lines dropped
-        assert_eq!(out.len(), 1);
+        // "hello\n" = 6 > 5 → all 3 lines dropped; marker emitted at flush
+        assert_eq!(out.len(), 1, "output: {:?}", out);
         assert!(out[0].starts_with("[lacon: truncated, "));
+    }
+
+    #[test]
+    fn max_bytes_cumulative_drop_count() {
+        // CR-04 regression: marker must report TOTAL bytes dropped across all post-cap lines.
+        // "ab\n"=3 bytes, "cd\n"=3 bytes, "ef\n"=3 bytes. Cap = 3 → only first line fits.
+        // Dropped: "cd\n"=3 + "ef\n"=3 = 6 bytes total.
+        let mut s = Stage::MaxBytes {
+            cap: 3,
+            written: 0,
+            truncated: false,
+            dropped_bytes: 0,
+        };
+        let out = run_stage(&mut s, &["ab", "cd", "ef"]);
+        assert_eq!(out.len(), 2, "one pass-through line + marker: {:?}", out);
+        assert_eq!(out[0], "ab");
+        let marker = &out[1];
+        assert!(marker.starts_with("[lacon: truncated, "), "marker: {:?}", marker);
+        // The marker should report 6 bytes (cd\n=3 + ef\n=3), not just the first overflow line (3).
+        assert!(
+            marker.contains("6 more bytes dropped"),
+            "marker must report cumulative 6 bytes, got: {:?}",
+            marker
+        );
     }
 
     // Helper for single-step without flush
