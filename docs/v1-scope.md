@@ -44,7 +44,7 @@ Per [ADR 0013](decisions/0013-filter-via-pretooluse-wrapper.md):
 - `lacon stats` — show top offenders, bypass rates, unmatched commands; supports `--project`, `--since`, `--rule` filters
 - `lacon explain <id>` — re-run filtering against stored raw output, show side-by-side diff
 - `lacon doctor` — verify hooks are installed, config files are valid, rules parse
-- `lacon validate <rule.yaml>` — lint a rule file without running it
+- `lacon validate <path>` — lint a rule file or a `config.yaml` without running it. Detects file type by content (see [config-schema → Validation](specs/config-schema.md#validation))
 
 ### Bundled rule library
 

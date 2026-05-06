@@ -143,7 +143,7 @@ ORDER BY bytes_saved DESC;
 
 ## Retention
 
-Two retention policies, both configurable in `~/.config/lacon/config.yaml`:
+Two retention policies, both configurable in `~/.config/lacon/config.yaml` (see [config-schema → retention](config-schema.md#retention) for the full key list and layer scope):
 
 | Table | Default retention | Reason |
 |-------|-------------------|--------|
@@ -157,7 +157,7 @@ Pruning runs on `lacon` startup: a single `DELETE FROM ... WHERE created_ts < ?`
 
 The v1 privacy contract for `raw_outputs`:
 
-- **Off by default.** Storage is opt-in per project in `.lacon/config.yaml`:
+- **Off by default.** Storage is opt-in per project in `.lacon/config.yaml` (see [config-schema → `store_raw_outputs`](config-schema.md#store_raw_outputs)):
 
   ```yaml
   store_raw_outputs: true

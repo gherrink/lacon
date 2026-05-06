@@ -67,17 +67,45 @@ A consequence: filtering one segment cannot change whether or how the next segme
 
 Rationale: bypass is a user-driven escape hatch ("just run this raw"). Making it segment-aware would surprise users and complicate the hook for no clear gain. If a single segment needs a different rule, edit the rule rather than reaching for `!!`.
 
-## Interactive (TUI) commands in chains — v1
+## Interactive (TUI) commands — v1
 
-If **any** segment in a chain matches the TUI heuristic (e.g. `git rebase -i`, `vim`, `less`, `htop`, `git commit` without `-m`), the **entire chain** is bypassed. No segments are wrapped.
+Some commands take over the terminal — `vim`, `less`, `htop`, `git rebase -i`, etc. — and break if their stdin / stderr / PTY is mediated by a wrapper. `lacon` detects these via a heuristic and bypasses them entirely.
 
-Reasoning:
+### Semantics
 
-- A wrapped TUI segment misroutes stdin/stderr/terminal control and breaks the user experience.
-- TUI-in-chain is rare in practice; interactive commands are typically invoked solo.
-- A whole-chain bypass is one branch instead of N, and is a strict subset of any future granular behavior — we can tighten in v2 without changing v1 semantics.
+The heuristic is a function `is_tui(command, args) -> bool` implemented in the adapter. After chain splitting, the adapter calls `is_tui` on every segment **before** rule resolution. If any segment returns true, the **entire input** is bypassed: the original command runs unchanged, no `lacon run` wrapping, no rule resolution. This applies to single commands too — a solo command is treated as a 1-segment chain.
 
-Granular per-segment bypass (wrap non-TUI segments, pass the TUI segment through) is a v2 candidate, gated on tracking data showing the lost filtering opportunity is material. Listed in [backlog](../backlog.md).
+Two design choices captured here:
+
+- **Why fire before rule resolution.** Most TUI tools (`vim`, `less`, `htop`, `ssh`) never have rules. If TUI detection lived inside the rule resolver, we'd either need a rule per TUI tool to mark it, or miss bypass for unmatched TUI commands. The heuristic has to run on unmatched segments, so it can't be inside the resolver.
+- **Why bypass the whole chain instead of just the TUI segment.** A wrapped TUI segment misroutes stdin / stderr / terminal control and breaks the user experience. TUI-in-chain is rare in practice; interactive commands are typically invoked solo. Whole-chain bypass is one branch instead of N, and is a strict subset of any future granular behavior — v2 can tighten it without changing v1 semantics. Granular per-segment bypass (wrap non-TUI segments, pass the TUI segment through) is a [backlog](../backlog.md) candidate, gated on tracking data showing the lost filtering opportunity is material.
+
+### v1 list
+
+**Pure TUI by `argv[0]` basename:**
+
+`vim`, `vi`, `nvim`, `nano`, `emacs`, `less`, `more`, `most`, `man`, `htop`, `top`, `btop`, `screen`, `tmux`, `ssh`, `mosh`, `ipython`, `irb`, `pry`, `redis-cli`, `crontab`, `visudo`.
+
+**Conditional patterns:**
+
+| Command | Interactive when |
+| --- | --- |
+| `git rebase` | `-i` or `--interactive` present |
+| `git commit` | none of `-m` / `--message` / `--message=…` / `-F` / `--file` present |
+| `git add` | `-p` / `--patch` / `-i` / `--interactive` present |
+| `git checkout` | `-p` / `--patch` present |
+| `git stash` | `-p` / `--patch` present |
+| `npm init`, `yarn init`, `pnpm init` | neither `-y` nor `--yes` present |
+| `node`, `python`, `python3` | no positional argument (REPL mode) |
+| `mysql`, `psql`, `sqlite3` | no positional argument (interactive shell) |
+
+Anything else returns false.
+
+### The list is hardcoded in v1
+
+The list lives in adapter code, not in user config. Adding or removing entries requires a `lacon` release. Users who hit a false positive (their own interactive tool not on the list, or a list entry being too aggressive in their context) use the existing escape hatches: `!!` prefix on the whole command, or `LACON_DISABLE=1` env var.
+
+A user-overridable TUI list (e.g. `~/.config/lacon/tui-commands.yaml` to add or remove entries) is a [backlog](../backlog.md) candidate. Deferred until user demand or a clear false-positive pattern emerges.
 
 ## What reaches the model
 

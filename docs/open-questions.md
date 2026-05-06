@@ -10,30 +10,7 @@ When a new design risk surfaces, add it to the appropriate section here.
 
 ## Open
 
-### TUI heuristic mechanism
-
-The chained-command spec ([chained-commands](specs/chained-commands.md)) bypasses the entire chain when any segment looks interactive (`vim`, `less`, `git rebase -i`, `git commit` without `-m`, etc.). The spec doesn't say *how* the match is performed.
-
-Options:
-
-- **Hardcoded curated list in the adapter.** Simple, fast, opaque. Updates require code changes and a `lacon` release.
-- **User-configurable list** (e.g. `~/.config/lacon/tui-commands.yaml`). More flexible, but adds another config surface for users to learn.
-- **Reuse `bypass_when.is_tty: true`** from the rule schema. Doesn't quite fit — `is_tty` is runtime TTY detection of the *parent* invocation, not a name-pattern match against the *segment* command. Different mechanism.
-- **A `tui_when` clause on bundled rules.** Each rule declares its own TUI conditions (e.g. the `git` rule's `tui_when` says `args_contain: [-i]` or no `-m`). Distributed, but matches existing rule-schema extension points.
-
-**Action:** Pick a mechanism. Affects whether bundled rules need a new schema field, whether users can override the heuristic, and how the adapter implements segment inspection at rewrite time.
-
-### `.lacon/config.yaml` schema
-
-[architecture](architecture.md) mentions config files at three layers (bundled, user, project) with "global settings (retention, default `max_bytes`, raw-output storage on/off, etc.)" but no full spec exists. The privacy resolution added `store_raw_outputs: true` as a documented key — currently the only one specified.
-
-Open items:
-
-- Full key list (retention windows, `max_bytes` default, raw-output flag, hook timeout, future tokenizer settings, etc.)
-- Layer interaction (does project config override user config? merge or replace? per-key or whole-file?)
-- Validation: extend `lacon validate` to lint config files, or only rule files?
-
-**Action:** Write `docs/specs/config-schema.md` once we have a clearer list of v1 settings. May fall out naturally from prototyping the first few config consumers.
+*None currently.* New design risks surfaced before or during implementation should be added here.
 
 ## Deferred to prototyping
 
@@ -127,6 +104,27 @@ v1 contract is now documented in [tracking-data-model → Privacy](specs/trackin
 - **Encryption at rest** — already backlog material. v1 stance unchanged.
 
 A side-effect of this resolution: the tracking spec previously documented `lacon purge` subcommands as if they shipped in v1, contradicting `v1-scope.md`. The spec has been corrected to match the 6-command v1 surface and the manual cleanup path.
+
+### `.lacon/config.yaml` schema — resolved (2026-05-06)
+
+Spec written: [config-schema](specs/config-schema.md). v1 surface is small — five effective keys:
+
+- `retention.invocations_days` (default 30) and `retention.raw_outputs_days` (default 3) — **user-only**, since the SQLite database is shared across projects on the user's machine and per-project retention overrides would be ambiguous.
+- `defaults.max_bytes` (default 32768) — **project-or-user**. Fallback final-stage cap for rules that don't declare their own.
+- `store_raw_outputs` (default false) — **project-or-user**. Project-level opt-in is the documented pattern.
+
+Layer interaction is per-key deep merge (project > user > bundled). Sub-objects merge recursively rather than replacing wholesale. A project file using a user-only key (`retention.*`) fails validation with a clear error.
+
+`lacon validate <path>` accepts both rule files and config files (dispatcher detects by content); `lacon doctor` runs config validation alongside its rule sweep. Skipped from v1: `hook.timeout_seconds` (Claude Code's 600s default is hardcoded), `database_path` (no override), log-level/verbosity (auto-detect, no config knob).
+
+### TUI heuristic mechanism — resolved (2026-05-06)
+
+Specified in [chained-commands → Interactive (TUI) commands](specs/chained-commands.md#interactive-tui-commands--v1). Summary:
+
+- The heuristic is a function `is_tui(command, args) -> bool` implemented in the adapter, called per-segment after chain splitting and **before** rule resolution. If any segment returns true, the entire input is bypassed.
+- It runs before rule resolution because most TUI tools (`vim`, `less`, `htop`, `ssh`) have no rule, so a resolver-internal check would miss them. The heuristic must fire on unmatched segments too.
+- v1 ships a hardcoded list: pure-TUI commands by basename (`vim`, `vi`, `nvim`, `nano`, `emacs`, `less`, `more`, `most`, `man`, `htop`, `top`, `btop`, `screen`, `tmux`, `ssh`, `mosh`, `ipython`, `irb`, `pry`, `redis-cli`, `crontab`, `visudo`) plus conditional patterns for `git` interactive subcommands, `npm`/`yarn`/`pnpm init` without `-y`, and language REPLs (`node`, `python`, `mysql`, `psql`, `sqlite3`) with no positional arg.
+- User-overridable list deferred to [backlog](backlog.md). v1 escape hatches (`!!` prefix, `LACON_DISABLE=1`) cover individual false positives.
 
 ### Testing strategy for rules — resolved (2026-05-06)
 

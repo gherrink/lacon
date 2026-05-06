@@ -15,6 +15,7 @@ Things deliberately deferred from v1, grouped by category. This is not a promise
 - **Filter inside pipes** — track `cmd1 | cmd2`, filter the pipeline output as a whole
 - **Heredoc / subshell / eval handling** — currently passes through; could be parsed
 - **Granular TUI-in-chain bypass** — v1 bypasses the entire chain if any segment is interactive ([chained-commands](specs/chained-commands.md)). v2 candidate: wrap non-TUI segments and pass only the interactive segment through. Gated on tracking data showing the lost filtering opportunity is material.
+- **User-overridable TUI list** — `~/.config/lacon/tui-commands.yaml` (or similar) to add user-specific interactive commands and suppress false positives in the hardcoded v1 list ([chained-commands → Interactive commands](specs/chained-commands.md#interactive-tui-commands--v1)). Defer until user demand or a clear false-positive pattern emerges. v1 escape hatches (`!!` prefix, `LACON_DISABLE=1`) cover individual cases.
 - **Multi-rule merging** — when more than one rule could apply, merge stages instead of first-match-wins. Probably a bad idea, but worth the option to revisit.
 - **Conditional pipeline stages** — `if exit_code == 0: keep_tail 5; else: ...` inline rather than via the `on_error` block
 - **Stage-level inheritance operations** — insert/remove/replace specific stages from a parent rule (rather than append-only `extends`)

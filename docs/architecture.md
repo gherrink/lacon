@@ -111,7 +111,7 @@ Three layers, project highest priority:
 
 Each layer can contain:
 
-- `config.yaml` — global settings (retention, default `max_bytes`, raw-output storage on/off, etc.)
+- `config.yaml` — engine and tracking settings (retention windows, default `max_bytes`, `store_raw_outputs` opt-in). Full schema in [config-schema](specs/config-schema.md).
 - `rules/*.yaml` — one rule per file (or several per file)
 - `scripts/*.star` — Starlark files referenced by rules
 
