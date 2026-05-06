@@ -1,0 +1,13 @@
+{
+  "source_path": "/home/maurice/Projects/gherrink-lacon/docs/decisions/0010-on-error-replaces-pipeline.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "0010: on_error replaces the pipeline, doesn't merge",
+  "summary": "Locks in that a rule's on_error block fully replaces the success pipeline and post_process on non-zero exit, rather than merging or appending stages.",
+  "scope": ["filter rule schema", "on_error behavior", "pipeline semantics", "post_process"],
+  "cross_refs": [],
+  "locked": true,
+  "precedence": null,
+  "notes": ""
+}

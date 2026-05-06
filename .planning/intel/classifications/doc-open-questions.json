@@ -1,0 +1,38 @@
+{
+  "source_path": "/home/maurice/Projects/gherrink-lacon/docs/open-questions.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "Open questions",
+  "summary": "Design-risk log tracking open, deferred-to-prototyping, and resolved design questions for v1 implementation.",
+  "scope": [
+    "design risks",
+    "signal forwarding",
+    "lacon init idempotency",
+    "stdout/stderr merge ordering",
+    "Claude Code hook mechanics",
+    "Starlark performance",
+    "chained command behavior",
+    "coverage boundary",
+    "tokenizer choice",
+    "privacy and raw_outputs",
+    "config schema",
+    "TUI heuristic",
+    "rule testing strategy"
+  ],
+  "cross_refs": [
+    "decisions/0013-filter-via-pretooluse-wrapper.md",
+    "specs/chained-commands.md",
+    "v1-scope.md",
+    "v1-scope.md#coverage-boundary",
+    "decisions/0011-sqlite-for-tracking.md",
+    "backlog.md",
+    "specs/tracking-data-model.md#privacy",
+    "specs/config-schema.md",
+    "specs/chained-commands.md#interactive-tui-commands--v1",
+    "testing-rules.md"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

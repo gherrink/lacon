@@ -1,0 +1,13 @@
+{
+  "source_path": "/home/maurice/Projects/gherrink-lacon/docs/vision.md",
+  "type": "PRD",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "Vision",
+  "summary": "Product vision for lacon: a Rust CLI that filters and rewrites bash output via coding-assistant hooks to reduce token spend.",
+  "scope": ["lacon CLI", "coding-assistant hook integration", "bash output filtering", "command rewriting", "SQLite tracking", "Claude Code adapter"],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": null,
+  "notes": "Vision/scope doc with classic PRD signals (problem, approach, target users, success metrics, explicit non-goals, architectural commitments). Lacks user stories and acceptance criteria but defines product requirements at the strategic level, so PRD edges out DOC. No frontmatter, no decision sections, no API specs."
+}

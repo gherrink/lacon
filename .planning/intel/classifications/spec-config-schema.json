@@ -1,0 +1,28 @@
+{
+  "source_path": "/home/maurice/Projects/gherrink-lacon/docs/specs/config-schema.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "Config schema",
+  "summary": "Specifies the three-layer YAML configuration schema (bundled/user/project) governing lacon's engine and tracking behaviour, including keys, scopes, merge semantics, and validation.",
+  "scope": [
+    "config.yaml",
+    "retention",
+    "defaults.max_bytes",
+    "store_raw_outputs",
+    "config layering (bundled/user/project)",
+    "lacon validate",
+    "lacon doctor"
+  ],
+  "cross_refs": [
+    "filter-rule-schema.md",
+    "tracking-data-model.md",
+    "filter-rule-schema.md#native-primitives",
+    "tracking-data-model.md#privacy",
+    "~/.config/lacon/config.yaml",
+    ".lacon/config.yaml"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

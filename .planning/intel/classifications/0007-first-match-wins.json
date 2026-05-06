@@ -1,0 +1,13 @@
+{
+  "source_path": "/home/maurice/Projects/gherrink-lacon/docs/decisions/0007-first-match-wins.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "0007: First-match-wins rule resolution",
+  "summary": "Locks in first-match-wins rule resolution across project/user/bundled layers, rejecting merge and most-specific alternatives.",
+  "scope": ["rule resolver", "rule layering", "match resolution", "extends mechanism"],
+  "cross_refs": [],
+  "locked": true,
+  "precedence": null,
+  "notes": ""
+}

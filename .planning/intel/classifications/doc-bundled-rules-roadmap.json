@@ -1,0 +1,22 @@
+{
+  "source_path": "/home/maurice/Projects/gherrink-lacon/docs/bundled-rules-roadmap.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "Bundled rules roadmap",
+  "summary": "Roadmap of bundled filter rules: Tier 1 v1 must-haves, Tier 2 post-v1 candidates, deliberately excluded categories, and format expectations for new rules.",
+  "scope": [
+    "bundled rules",
+    "v1 scope",
+    "post-v1 backlog",
+    "rule format expectations",
+    "test fixtures"
+  ],
+  "cross_refs": [
+    "testing-rules.md",
+    "bundled-rules/",
+    "tests/fixtures/<rule-id>/<scenario>/"
+  ],
+  "locked": false,
+  "precedence": null
+}

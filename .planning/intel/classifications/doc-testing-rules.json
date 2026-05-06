@@ -1,0 +1,22 @@
+{
+  "source_path": "/home/maurice/Projects/gherrink-lacon/docs/testing-rules.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "Testing rules",
+  "summary": "Guide describing the fixture-based hermetic CI strategy for testing bundled rules and the regeneration workflow when tool output formats drift.",
+  "scope": [
+    "bundled rules testing",
+    "test fixtures",
+    "fixture metadata (meta.yaml)",
+    "Rust integration test runner",
+    "fixture regeneration workflow",
+    "reduction threshold assertions"
+  ],
+  "cross_refs": [
+    "backlog.md"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}
