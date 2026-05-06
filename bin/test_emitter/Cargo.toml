@@ -1,0 +1,14 @@
+[package]
+name = "test_emitter"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "test_emitter"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }

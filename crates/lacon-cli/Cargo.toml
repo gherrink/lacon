@@ -19,3 +19,4 @@ regex = { workspace = true }
 assert_cmd = { workspace = true }
 predicates = { workspace = true }
 tempfile = { workspace = true }
+test_emitter = { path = "../../bin/test_emitter" }
