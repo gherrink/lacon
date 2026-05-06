@@ -36,3 +36,10 @@ rusqlite = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 insta = { workspace = true }
+# Phase 2 Plan 06: criterion microbench at the Tracker::open boundary.
+# REAL benchmark gate (Issue #3 Option A) — bench panics if median > 3700µs.
+criterion = "0.5"
+
+[[bench]]
+name = "tracker_open"
+harness = false
