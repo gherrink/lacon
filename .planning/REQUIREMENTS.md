@@ -13,9 +13,9 @@ Requirements for the v1 release. Each maps to exactly one phase in `.planning/RO
 - [x] **REQ-engine-starlark-postprocess**: Starlark escape hatch ships as a `post_process` step running on aggregated post-pipeline output. Function signature `def process(ctx, lines) -> list[str]`. Cold-start cost paid per invocation; no shared process / IPC. (ADR-0008, SPEC filter-rule-schema.)
 - [x] **REQ-engine-rule-loading**: Rule loading from `bundled/`, `~/.config/lacon/rules/`, `<project>/.lacon/rules/` with project > user > bundled precedence and first-match-wins resolution. Resolver walks layers in priority order, returns the first matching rule; no cross-layer merging. (ADRs 0004, 0007.)
 - [x] **REQ-engine-extends**: `extends` inheritance is append-only — parent `pipeline` PREPENDED to child's; scalar fields inherited only when child omits them. No remove/reorder/insert operations exposed in v1. (ADR-0012.)
-- [ ] **REQ-engine-on-error**: `on_error` block fully replaces the success pipeline (and optionally `post_process`) when the wrapped command exits non-zero. Implemented inside `lacon run` via observed subprocess exit code; success buffer is discarded on swap. (ADR-0010, ADR-0013.)
+- [x] **REQ-engine-on-error**: `on_error` block fully replaces the success pipeline (and optionally `post_process`) when the wrapped command exits non-zero. Implemented inside `lacon run` via observed subprocess exit code; success buffer is discarded on swap. (ADR-0010, ADR-0013.)
 - [x] **REQ-engine-rewrite**: Pre-execution command rewriting via `rewrite.add_flags` / `remove_flags` / `replace_flags`. `add_flags` is idempotent (won't duplicate). Adapter applies the rewrite block to inner argv before wrapping. (ADR-0006.)
-- [ ] **REQ-engine-bypass**: Bypass mechanics — `!!` command prefix and `LACON_DISABLE=1` env var skip filtering entirely. Bypass is whole-command granularity (NOT per-segment in chains); hook returns the original command unchanged.
+- [x] **REQ-engine-bypass**: Bypass mechanics — `!!` command prefix and `LACON_DISABLE=1` env var skip filtering entirely. Bypass is whole-command granularity (NOT per-segment in chains); hook returns the original command unchanged.
 - [x] **REQ-engine-max-bytes-cap**: Hard `max_bytes` cap as final-stage safety net. Default 32768 bytes from `defaults.max_bytes` config when a rule omits its own `max_bytes` primitive. Engine never returns more than `max_bytes` from a pipeline; truncation marker `[lacon: truncated, N more bytes dropped]` appended on overflow.
 
 ### Claude Code adapter
@@ -37,7 +37,7 @@ Requirements for the v1 release. Each maps to exactly one phase in `.planning/RO
 ### CLI surface
 
 - [ ] **REQ-cli-init**: `lacon init` sets up `.lacon/` in the current project, configures the Claude Code `PreToolUse` hook in `.claude/settings.json`, adds a tiny CLAUDE.md instruction line.
-- [ ] **REQ-cli-run**: `lacon run [--rule <id>] -- <cmd> [args...]` is the production wrapper invoked by the `PreToolUse` rewrite. Spawns the subprocess, merges stdout+stderr, filters, propagates the subprocess's exit code. Without `--rule`, runs the resolver inline against `<cmd>` for manual testing. (ADR-0013.)
+- [x] **REQ-cli-run**: `lacon run [--rule <id>] -- <cmd> [args...]` is the production wrapper invoked by the `PreToolUse` rewrite. Spawns the subprocess, merges stdout+stderr, filters, propagates the subprocess's exit code. Without `--rule`, runs the resolver inline against `<cmd>` for manual testing. (ADR-0013.)
 - [ ] **REQ-cli-stats**: `lacon stats` shows top offenders, bypass rates, unmatched commands; supports `--project`, `--since`, `--rule` filters.
 - [ ] **REQ-cli-explain**: `lacon explain <id>` re-runs filtering against stored raw output and shows side-by-side diff. Requires raw retention to have been enabled at the time of the invocation.
 - [ ] **REQ-cli-doctor**: `lacon doctor` verifies hooks are installed, config files are valid, rules parse. Runs config validation on every layer's `config.yaml` in addition to its rule sweep.
@@ -173,11 +173,11 @@ Phase mappings populated during ROADMAP creation. 36/36 v1 requirements mapped, 
 | REQ-engine-starlark-postprocess | Phase 1 | Complete |
 | REQ-engine-rule-loading | Phase 1 | Complete |
 | REQ-engine-extends | Phase 1 | Complete |
-| REQ-engine-on-error | Phase 1 | Pending |
+| REQ-engine-on-error | Phase 1 | Complete |
 | REQ-engine-rewrite | Phase 1 | Complete |
-| REQ-engine-bypass | Phase 1 | Pending |
+| REQ-engine-bypass | Phase 1 | Complete |
 | REQ-engine-max-bytes-cap | Phase 1 | Complete |
-| REQ-cli-run | Phase 1 | Pending |
+| REQ-cli-run | Phase 1 | Complete |
 | REQ-cli-validate | Phase 1 | Complete |
 | REQ-tracking-sqlite-location | Phase 2 | Pending |
 | REQ-tracking-schema | Phase 2 | Pending |
