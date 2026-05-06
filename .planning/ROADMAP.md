@@ -52,7 +52,13 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
   2. With `store_raw_outputs: false` (default), no rows are written to `raw_outputs`. Flipping the project config to `store_raw_outputs: true` for the first time prints a one-time stderr privacy notice and writes a marker file in the project config dir suppressing future warnings.
   3. The four required views (`v_unmatched_offenders`, `v_filtered_offenders`, `v_bypass_rate`, `v_project_savings`) exist in the schema and return non-error result sets when queried via `sqlite3` after a session of `lacon run` invocations.
   4. Startup pruning deletes `invocations` rows older than 30 days, `raw_outputs` rows older than 3 days, and `suspected_regressions` rows older than 30 days. Append-only numbered migrations are applied at startup; a project `config.yaml` containing a `retention.*` key fails validation with an error pointing at `~/.config/lacon/config.yaml`.
-**Plans**: TBD
+**Plans**: 6 plans
+- [ ] 02-01-PLAN.md — Workspace deps + tracking module scaffold + InvocationMeta extension + TrackingError
+- [ ] 02-02-PLAN.md — Migrations runner + 0001_initial.sql byte-exact DDL + schema and views tests
+- [ ] 02-03-PLAN.md — Privacy marker + warning text + health check probe + race-free integration tests
+- [ ] 02-04-PLAN.md — Tracker::open with 0700 dir + 3 PRAGMAs (busy_timeout=200ms, foreign_keys=ON, journal_mode=WAL) + prune throttled by 24h
+- [ ] 02-05-PLAN.md — Tracker::record (raw_outputs gate + privacy trigger + invocations INSERT) + CLI wire-up in lacon-cli/src/commands/run.rs
+- [ ] 02-06-PLAN.md — End-to-end CLI tests + lazy-open invariants (--version, validate, doctor) + best-effort + cold-start bench
 
 ### Phase 3: Claude Code adapter & `lacon init`
 **Goal**: A user can run `lacon init` in a fresh project and have the Claude Code `PreToolUse` hook installed, the `.lacon/` skeleton created, and a CLAUDE.md instruction line added — and from then on every Bash tool invocation that matches a rule is rewritten to `lacon run --rule <id> -- <inner-cmd>` (or whole-chain bypassed when interactive or user-bypassed), reassembled with original operators preserved.
@@ -109,7 +115,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 5 (bundl
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Engine core & `lacon run` wrapper | 8/8 | Complete   | 2026-05-06 |
-| 2. Local tracking | 0/TBD | Not started | - |
+| 2. Local tracking | 0/6 | Not started | - |
 | 3. Claude Code adapter & `lacon init` | 0/TBD | Not started | - |
 | 4. CLI completion (`stats`, `explain`, `doctor`) | 0/TBD | Not started | - |
 | 5. Bundled Tier 1 rules | 0/TBD | Not started | - |
