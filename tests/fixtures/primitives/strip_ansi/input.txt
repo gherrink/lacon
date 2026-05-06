@@ -1,0 +1,4 @@
+[31mred error[0m
+[1mbold[0m heading
+plain text
+[2J[Hfullscreen

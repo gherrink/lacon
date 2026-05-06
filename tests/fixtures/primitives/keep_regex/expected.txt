@@ -1,0 +1,6 @@
+test config::validate ... FAIL
+test logger::error ... ok
+test permission::revoke ... FAIL
+test crypto::verify ... error: hash mismatch
+test tls::handshake ... ERROR: certificate expired
+test result: FAILED. 47 passed; 3 failed;

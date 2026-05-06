@@ -1,0 +1,6 @@
+Compiling /Users/alice/projects/myapp/src/main.rs
+Compiling /Users/alice/projects/myapp/src/lib.rs
+Compiling /Users/alice/projects/myapp/src/config.rs
+Compiling /Users/alice/projects/myapp/src/db.rs
+warning: unused variable in /Users/alice/projects/myapp/src/main.rs:42
+error[E0382]: use of moved value at /Users/alice/projects/myapp/src/lib.rs:17

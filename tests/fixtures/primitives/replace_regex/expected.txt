@@ -1,0 +1,6 @@
+Compiling ~/projects/myapp/src/main.rs
+Compiling ~/projects/myapp/src/lib.rs
+Compiling ~/projects/myapp/src/config.rs
+Compiling ~/projects/myapp/src/db.rs
+warning: unused variable in ~/projects/myapp/src/main.rs:42
+error[E0382]: use of moved value at ~/projects/myapp/src/lib.rs:17
