@@ -10,7 +10,7 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
 - Integer phases (1, 2, 3, 4, 5, 6): planned milestone work for v1.
 - Decimal phases (e.g., 2.1): reserved for urgent insertions post-planning via `/gsd-insert-phase`. None at creation time.
 
-- [x] **Phase 1: Engine core & `lacon run` wrapper** - Streaming pipeline + Starlark `post_process` + rule loader + the production wrapper that runs every filter (completed 2026-05-06)
+- [ ] **Phase 1: Engine core & `lacon run` wrapper** - Streaming pipeline + Starlark `post_process` + rule loader + the production wrapper that runs every filter (SC4 gap re-opened 2026-05-06; closure plan: 01-08)
 - [ ] **Phase 2: Local tracking** - SQLite history at `~/.local/share/lacon/history.db` with privacy contract, retention, and the four required views
 - [ ] **Phase 3: Claude Code adapter & `lacon init`** - `PreToolUse` hook with chained-command splitting, TUI bypass, bypass detection, and one-shot project setup
 - [ ] **Phase 4: CLI completion (`stats`, `explain`, `doctor`)** - Introspection commands backed by tracking data plus the six-command surface cap
@@ -29,7 +29,7 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
   3. A rule's `on_error` block fully replaces the success pipeline (and optionally `post_process`) when the subprocess exits non-zero, with the success buffer discarded.
   4. `lacon validate <path>` accepts both rule files and `config.yaml` files, dispatches by content (`id`+`match` → rule), and rejects invalid regex / unknown primitive / circular `extends` / missing referenced Starlark file at load time without falling back to defaults.
   5. The `extends` directive prepends the parent's pipeline to the child's, inherits scalar fields the child omits, flattens single-level chains at load time, and rejects cycles.
-**Plans**: 7 plans
+**Plans**: 8 plans
 - [x] 01-01-PLAN.md — Workspace scaffolding & cargo check green
 - [x] 01-02-PLAN.md — Pipeline core: Stage enum + 10 native primitives + golden fixtures
 - [x] 01-03-PLAN.md — Rule loader: schema + extends flatten + lacon validate dispatch + bundled embedding
@@ -37,6 +37,7 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
 - [x] 01-05-PLAN.md — lacon run runtime: subprocess merge, dual-buffer, on_error swap, bypass, signal forwarding
 - [x] 01-06-PLAN.md — CLI surface: clap derive, lacon run + lacon validate wiring, 6-command cap
 - [x] 01-07-PLAN.md — End-to-end integration tests + cold-start probe + benchmark findings
+- [ ] 01-08-PLAN.md — SC4 gap closure: wire compile_resolved into validate_rule + 4 CLI tests for InvalidRegex/MissingScriptFile/UnknownPrimitive/CircularExtends
 
 **Implementation-time decisions to settle in this phase** (deferred-to-prototyping per `docs/open-questions.md`):
 - **Q-deferred-signal-forwarding**: When Claude Code's Bash tool times out or the user interrupts, what does `lacon run` do? Likely answer: SIGTERM forward + immediate exit for v1, no drain. Settle the first time `lacon run` actually handles a signal in integration testing.
