@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Plan 02-02 complete (M0001_INITIAL migration + 11 schema/view tests)
-last_updated: "2026-05-06T14:46:28.177Z"
+stopped_at: Plan 02-04 complete (Tracker::open + 3 PRAGMAs + 24h-throttled prune + 13 integration tests)
+last_updated: "2026-05-06T15:30:00.000Z"
 last_activity: 2026-05-06
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 14
-  completed_plans: 11
-  percent: 79
+  completed_plans: 12
+  percent: 86
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Phase: 02 (Local tracking) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-05-06
 
-Progress: [████████░░] 79%
+Progress: [████████▌░] 86%
 
 ## Performance Metrics
 
@@ -61,6 +61,7 @@ Progress: [████████░░] 79%
 | Phase 02-local-tracking P01 | 10min | 2 tasks | 10 files |
 | Phase 02-local-tracking P02 | 10min | 2 tasks tasks | 9 files files |
 | Phase 02-local-tracking PP03 | 6min | 2 tasks tasks | 3 files files |
+| Phase 02-local-tracking P04 | 12min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -98,6 +99,10 @@ Full decision log lives in PROJECT.md "Key Decisions" (13 LOCKED ADRs). Recent d
 - [Phase ?]: [Phase 02-local-tracking PLAN-03]: privacy.rs + health.rs OVERWRITE Plan 02 stubs without touching tracking/mod.rs (wave-2 ownership rule); 10 new tests pass (4 privacy unit + 1 health unit + 5 integration); workspace 173 → 183, no regression
 - [Phase ?]: [Phase 02-local-tracking PLAN-03]: OpenOptions::create_new(true) is the OS-atomic primitive — no Path::exists() pre-check (TOCTOU); concurrent_calls_at_most_one_creates smoke verifies API contract
 - [Phase ?]: [Phase 02-local-tracking PLAN-03]: D-16 warning text is byte-stable; format_warning_byte_exact_template asserts the 4-line template via String concatenation; ~/.local/share/lacon/history.db stays literal even when XDG_DATA_HOME overridden
+- [Phase ?]: [Phase 02-local-tracking PLAN-04]: Tracker.conn ships as `pub` (NOT `pub(crate)`) per revision Issue #1; integration tests under crates/lacon-core/tests/ are external to the crate boundary and need to read tracker.conn directly; regression-guard `! grep 'pub(crate) conn: Connection'` locks the contract
+- [Phase ?]: [Phase 02-local-tracking PLAN-04]: 3-pragma contract order locked: busy_timeout=200ms (Duration::from_millis(200)) → set_db_config(SQLITE_DBCONFIG_ENABLE_FKEY, true) → pragma_update_and_check(None, journal_mode, WAL); debug_assert_eq verifies WAL accepted, not silently dropped
+- [Phase ?]: [Phase 02-local-tracking PLAN-04]: Rule 1 deviation — Plan's negative-side FK test ("fresh conn defaults to OFF") incorrect for our build (libsqlite3-sys 0.37 ships -DSQLITE_DEFAULT_FOREIGN_KEYS=1); reworked to sibling-toggle proof of per-connection independence (same approach as tracking_schema.rs::fk_silent_no_op_without_pragma)
+- [Phase ?]: [Phase 02-local-tracking PLAN-04]: prune_if_due uses unchecked_transaction() to operate on &Connection (not &mut), safe under single-threaded-per-process invariant; DELETE order raw_outputs → suspected_regressions → invocations minimizes ON DELETE SET NULL trigger fires
 
 ### Pending Todos
 
@@ -122,6 +127,6 @@ None blocking. Three deferred-to-prototyping open questions assigned to phases a
 
 ## Session Continuity
 
-Last session: 2026-05-06T14:46:28.170Z
-Stopped at: Plan 02-02 complete (M0001_INITIAL migration + 11 schema/view tests)
-Resume file: .planning/phases/02-local-tracking/02-04-PLAN.md
+Last session: 2026-05-06T15:30:00.000Z
+Stopped at: Plan 02-04 complete (Tracker::open + 3 PRAGMAs + 24h-throttled prune + 13 integration tests)
+Resume file: .planning/phases/02-local-tracking/02-05-PLAN.md
