@@ -425,14 +425,17 @@ impl Stage {
             }
 
             // ─── CollapseRepeated ───────────────────────────────────────────────────────
-            // Flush final summary if the stream ended while we were in a repeated run.
+            // Flush final summary ONLY when lines were actually suppressed (dropped > 0).
+            // CR-03 fix: the old condition `kept_so_far > 0 || dropped > 0` was wrong —
+            // when the stream ends exactly at max_kept examples with nothing suppressed,
+            // `kept_so_far > 0` fires and emits "… 0 <noun>" which is spurious noise.
             Stage::CollapseRepeated {
                 summary_template,
                 kept_so_far,
                 dropped,
                 ..
             } => {
-                if *kept_so_far > 0 || *dropped > 0 {
+                if *dropped > 0 {
                     let summary = summary_template.replace("{count}", &dropped.to_string());
                     out.push(Cow::Owned(summary));
                     *kept_so_far = 0;
@@ -620,6 +623,28 @@ mod tests {
             &["Progress: 10%", "Progress: 20%", "Progress: 30%"],
         );
         assert_eq!(out, vec!["Progress: 10%", "… 2 progress lines"]);
+    }
+
+    #[test]
+    fn collapse_repeated_no_spurious_summary_when_nothing_dropped() {
+        // CR-03 regression: when stream ends exactly at max_kept examples with
+        // nothing suppressed, flush must NOT emit a "… 0 …" summary line.
+        let pattern = Regex::new(r"^P:").unwrap();
+        let mut s = Stage::CollapseRepeated {
+            pattern,
+            max_kept: 2,
+            summary_template: "… {count} lines suppressed".to_owned(),
+            kept_so_far: 0,
+            dropped: 0,
+        };
+        // Exactly max_kept=2 matching lines, no non-match to trigger in-step summary,
+        // and dropped==0 at flush time — must produce no summary line.
+        let out = run_stage(&mut s, &["P: 1", "P: 2"]);
+        assert_eq!(
+            out,
+            vec!["P: 1", "P: 2"],
+            "no summary line should be emitted when dropped == 0 at flush"
+        );
     }
 
     // ── KeepHead ─────────────────────────────────────────────────────────────
