@@ -141,14 +141,26 @@ pub(crate) fn parse_partial(
 ) -> Result<PartialConfig, Vec<ValidationError>> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| vec![ValidationError::Io { path: path.to_owned(), source: e }])?;
+    parse_partial_from_str(&content, path, layer)
+}
 
+/// Parse a config layer from an already-loaded `content` string.
+///
+/// WR-04: introduced so `validate_config` can reuse the content read by
+/// `validate_file` without a second disk read. Avoids the TOCTOU hazard
+/// (file changed between reads) and the extra I/O.
+pub(crate) fn parse_partial_from_str(
+    content: &str,
+    path: &Path,
+    layer: ConfigLayer,
+) -> Result<PartialConfig, Vec<ValidationError>> {
     // Project-layer retention pre-check (T-03-06): use TopLevelKeyProbe to detect
     // `retention` key BEFORE typed deserialization, so the error is explicit.
     if matches!(layer, ConfigLayer::Project) {
-        retention_precheck(&content, path)?;
+        retention_precheck(content, path)?;
     }
 
-    serde_saphyr::from_str::<PartialConfig>(&content)
+    serde_saphyr::from_str::<PartialConfig>(content)
         .map_err(|e| {
             let line = e.location().map(|l| l.line() as usize).unwrap_or(0);
             let msg  = e.to_string();

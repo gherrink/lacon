@@ -27,7 +27,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::config::{parse_partial, ConfigLayer};
+use crate::config::{parse_partial_from_str, ConfigLayer};
 use crate::error::ValidationError;
 use crate::rules::loader::parse_one;
 
@@ -136,12 +136,18 @@ fn validate_rule(path: &Path, content: &str) -> Vec<ValidationError> {
     }
 }
 
-/// Validate a config file at `path` with content `content`.
-fn validate_config(path: &Path, _content: &str, layer: ConfigLayer) -> Vec<ValidationError> {
-    // Delegate to config::parse_partial which handles:
+/// Validate a config file at `path` with already-loaded `content`.
+///
+/// WR-04 fix: previously delegated to `parse_partial(path, layer)` which
+/// re-read the file from disk, ignoring the `content` parameter entirely.
+/// Now uses `parse_partial_from_str` to avoid the redundant disk I/O and
+/// the associated TOCTOU hazard (file could change between reads).
+fn validate_config(path: &Path, content: &str, layer: ConfigLayer) -> Vec<ValidationError> {
+    // Uses the already-loaded `content` string (read once in `validate_file`).
+    // Handles:
     // - UserOnlyKeyInProject check (for project layer).
     // - deny_unknown_fields via PartialConfig serde derive.
-    match parse_partial(path, layer) {
+    match parse_partial_from_str(content, path, layer) {
         Ok(_)   => Vec::new(),
         Err(es) => es,
     }
