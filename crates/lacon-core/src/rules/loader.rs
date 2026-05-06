@@ -655,6 +655,9 @@ fn compile_regex(pattern: &str, source_path: &Path) -> Result<Regex, ValidationE
 }
 
 /// Build a `HeadTailMode` from optional `lines` / `bytes` spec fields.
+///
+/// WR-01: rejects `n == 0` as degenerate — the PLAN-03 comment in stages.rs
+/// documented that zero should be rejected; this is now enforced at parse time.
 fn head_tail_mode(
     lines: Option<usize>,
     bytes: Option<usize>,
@@ -662,6 +665,12 @@ fn head_tail_mode(
     source_path: &Path,
 ) -> Result<HeadTailMode, ValidationError> {
     match (lines, bytes) {
+        // WR-01: zero is a degenerate count — reject at load time.
+        (Some(0), None) | (None, Some(0)) => Err(ValidationError::ParseError {
+            path: source_path.to_owned(),
+            line: 0,
+            message: format!("`{stage_name}` count/bytes must be > 0"),
+        }),
         (Some(n), None)  => Ok(HeadTailMode::Lines(n)),
         (None,    Some(n)) => Ok(HeadTailMode::Bytes(n)),
         (Some(_), Some(_)) => Err(ValidationError::ParseError {

@@ -1,0 +1,7 @@
+id: zero-lines-keep-tail
+description: "Rule with keep_tail lines: 0 - must be rejected at parse time (WR-01)"
+match:
+  command: echo
+pipeline:
+  - keep_tail:
+      lines: 0

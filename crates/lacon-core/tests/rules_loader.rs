@@ -211,3 +211,39 @@ fn explicit_max_bytes_not_double_injected() {
     assert_eq!(resolved.success_pipeline.stage_count(), 3,
         "explicit MaxBytes must not be duplicated (Pitfall 7)");
 }
+
+#[test]
+fn keep_tail_lines_zero_rejected() {
+    // WR-01: keep_tail with lines: 0 is a degenerate case — must be rejected at parse time.
+    let content = std::fs::read_to_string(
+        fixtures_dir().join("zero_lines_keep_tail.yaml")
+    ).unwrap();
+    let tmp = setup_project_with_rules(&[("zero_lines_keep_tail.yaml", &content)]);
+    let mut loader = RuleLoader::new(Some(tmp.path().to_owned()));
+    let err = loader.resolve("zero-lines-keep-tail").err()
+        .expect("keep_tail lines: 0 must be rejected");
+    assert!(
+        matches!(err, ValidationError::ParseError { ref message, .. } if message.contains("must be > 0")),
+        "expected ParseError with 'must be > 0', got {err:?}"
+    );
+}
+
+#[test]
+fn keep_head_lines_zero_rejected() {
+    // WR-01: keep_head with lines: 0 is also degenerate — must be rejected at parse time.
+    let rule_yaml = r#"id: zero-head
+match:
+  command: echo
+pipeline:
+  - keep_head:
+      lines: 0
+"#;
+    let tmp = setup_project_with_rules(&[("zero_head.yaml", rule_yaml)]);
+    let mut loader = RuleLoader::new(Some(tmp.path().to_owned()));
+    let err = loader.resolve("zero-head").err()
+        .expect("keep_head lines: 0 must be rejected");
+    assert!(
+        matches!(err, ValidationError::ParseError { ref message, .. } if message.contains("must be > 0")),
+        "expected ParseError with 'must be > 0', got {err:?}"
+    );
+}
