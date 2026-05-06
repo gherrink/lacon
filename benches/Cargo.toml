@@ -1,0 +1,11 @@
+[package]
+name = "lacon_benches"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[[bin]]
+name = "cold_start_probe"
+path = "cold_start.rs"
+
+[dependencies]

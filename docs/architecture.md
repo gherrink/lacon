@@ -150,3 +150,37 @@ The exception is the Starlark `post_process` step, which receives the aggregated
 - The exact YAML schema → see [filter-rule-schema](specs/filter-rule-schema.md)
 - The exact SQLite schema → see [tracking-data-model](specs/tracking-data-model.md)
 - Why we chose Rust, hooks, Starlark, etc. → see [decisions](decisions/)
+
+## Cold-start measurements (Phase 1)
+
+Per [REQ-acceptance-cold-start-budget](../.planning/REQUIREMENTS.md) (Phase 6 ship gate), the cold-start binary invocation must be under 10ms on the hook hot path. Phase 1 records baseline measurements so Phase 6's acceptance test has a regression target.
+
+**Measured:** 2026-05-06 on Linux 6.8.0-111-generic (AMD Ryzen 7 5800X 8-Core Processor). Sample size 50 per scenario, after 3-run warm-up. Release build with `opt-level = "z"` + `lto = "thin"` + `strip = "symbols"`.
+
+| Command | min | median | p95 | max |
+|---------|-----|--------|-----|-----|
+| `lacon --version` | 982 µs | 1154 µs | 1301 µs | 1323 µs |
+| `lacon validate <rule>` | 1082 µs | 1259 µs | 1401 µs | 1635 µs |
+
+Both scenarios are comfortably under the 10ms Phase 6 budget. The dominant cost at these figures is likely process startup + dynamic linking; the clap parse and loader code paths add only ~100 µs on top of `--version`. To regenerate: `cargo build --release && cargo run --release --bin cold_start_probe`.
+
+### Decisions from CONTEXT.md benchmark items
+
+| Item | Measured | Decision | Reference |
+|------|----------|----------|-----------|
+| 1. Starlark cold-start | Dev-mode: 6 integration tests (~20ms total test-runner overhead); per-test parse+run estimated well under 1ms in debug. Release-mode estimate: negligible relative to 10ms budget. | Eager-init (parse AstModule at rule load time, store on ResolvedRule) is correct. Lazy-init not needed. | PLAN-04 |
+| 2. clap v4 vs pico-args | `lacon --version` median: 1154 µs; `lacon validate <rule>` median: 1259 µs | Keep clap derive. Plan-B (pico-args) not triggered. Full cold-start chain well under 10ms budget. | PLAN-06, this section |
+| 3. os_pipe + threads vs duct vs raw nix | os_pipe + 1 reader thread + crossbeam-channel adopted; alternatives not benchmarked because the chosen approach met the streaming and cold-start budgets on first implementation. | Keep os_pipe + crossbeam; revisit only if Phase 6 acceptance gate fails. | PLAN-05 |
+| 4. POSIX signal-forwarding macOS vs Linux | Tested on Linux 6.8.0-111-generic only in Phase 1; macOS verification deferred. `nix::sys::signal::kill` is portable; the API is identical on macOS. | Cross-platform sign-off deferred to Phase 6 acceptance gate. See Signal forwarding (D-12) below. | PLAN-05 |
+
+### Stream merge guarantee (D-11)
+
+stdout/stderr merge in `lacon run` is **best-effort line atomicity, no cross-stream order guarantee**. Each individual line from stderr or stdout is emitted whole (via `read_until(b'\n', &mut buf)` on a single os_pipe read-end); stderr-line vs stdout-line interleaving is wall-clock-arrival order from the reader thread's perspective. The OS pipe buffer is a single FIFO; whichever stream's `write(2)` lands first wins. This matches CON-nfr-stderr-merge.
+
+Resolves: `Q-deferred-merge-ordering` from `docs/open-questions.md`. See `crates/lacon-core/src/runtime/mod.rs` for the runtime implementation (PLAN-05).
+
+### Signal forwarding (D-12)
+
+SIGTERM and SIGINT received by `lacon run` are forwarded to the subprocess PID via `nix::sys::signal::kill(Pid::from_raw(child_pid), signal)`. The wrapper does **not** drain or flush remaining buffered output after forwarding; it exits with `128 + sig` after the subprocess terminates. Process-group kill (negative PID) is **not** v1 — children of the subprocess are not killed. This is documented as a known v1 limitation; granular process-group behavior is a v2 backlog item.
+
+Resolves: `Q-deferred-signal-forwarding` from `docs/open-questions.md`. See `crates/lacon-core/src/runtime/mod.rs` for the signal-hook + nix wiring (PLAN-05 Task 2).

@@ -16,11 +16,9 @@ When a new design risk surfaces, add it to the appropriate section here.
 
 Genuine unknowns where committing to an answer upfront is more likely to be wrong than waiting for the implementation to reveal the right shape. Each entry records a likely-answer so the implementor has a starting point.
 
-### Signal forwarding in `lacon run`
+### Signal forwarding in `lacon run` — resolved (2026-05-06), see Resolved section
 
-When Claude Code's Bash tool times out (default 2 min) or the user interrupts, what does `lacon run` do? Forward SIGINT/SIGTERM to the wrapped subprocess and drain the pipeline for a partial result, or just die? The drain-partial-result path is more user-friendly but adds bookkeeping (and timing edge cases when the kill arrives mid-stage).
-
-**Likely answer:** SIGTERM forward + immediate exit for v1, no drain. Revisit if user reports indicate that partial-results-on-timeout is meaningful in practice.
+**Resolution summary:** SIGTERM/SIGINT forwarded via `nix::sys::signal::kill`; no drain; exit `128 + sig`. See D-12 in `docs/architecture.md`.
 
 ### `lacon init` idempotency
 
@@ -28,13 +26,31 @@ What happens if `lacon init` runs in a project where the hook is already install
 
 **Likely answer:** detect existing block via marker comment (e.g. `// lacon:hook`), replace the block contents in place, leave other settings.json keys alone. Idempotent re-runs become a no-op when the block matches the current desired state. Settle during the first integration test pass.
 
-### stdout/stderr merge ordering
+### stdout/stderr merge ordering — resolved (2026-05-06), see Resolved section
 
-[ADR 0013](decisions/0013-filter-via-pretooluse-wrapper.md) says ordering "may differ from raw terminal interleaving" without specifying the implementation guarantee. POSIX line-buffered merge has known race conditions; merging losslessly with strict line atomicity requires either a pty or careful select/epoll bookkeeping.
-
-**Likely answer:** "best-effort line atomicity, no cross-stream order guarantee" once the implementation chooses an approach. Most rules don't depend on cross-stream order — they filter by content. Document the guarantee in `architecture.md` or `chained-commands.md` once chosen.
+**Resolution summary:** Best-effort line atomicity, no cross-stream order guarantee. Single os_pipe FIFO; wall-clock-arrival ordering. See D-11 in `docs/architecture.md`.
 
 ## Resolved
+
+### Signal forwarding in `lacon run` — resolved (D-12, 2026-05-06)
+
+SIGTERM and SIGINT received by the `lacon run` process are forwarded to the subprocess PID via `nix::sys::signal::kill(Pid::from_raw(child_pid), signal)`. The v1 implementation does **not** drain or flush remaining buffered output after forwarding the signal; it exits with `128 + sig` after the subprocess terminates. Process-group kill (negative PID) is not v1 — only the direct subprocess PID is targeted. This means that any children of the subprocess are not killed when the user or timeout interrupts the session.
+
+**Canonical answer:** SIGTERM/SIGINT forward via `nix::kill` + immediate exit, no drain. The drain-partial-result path is deferred to [backlog](backlog.md) pending evidence that partial results on timeout are meaningful to users in practice.
+
+**Implementation:** `crates/lacon-core/src/runtime/mod.rs` (PLAN-05 Task 2). Cross-platform note: `nix::sys::signal::kill` is portable; the API is the same on Linux and macOS. Phase 1 was tested on Linux only; macOS verification is deferred to the Phase 6 acceptance gate.
+
+See also: [D-12 in docs/architecture.md](architecture.md#signal-forwarding-d-12).
+
+### stdout/stderr merge ordering — resolved (D-11, 2026-05-06)
+
+The stdout/stderr merge in `lacon run` uses a single `os_pipe` write-end cloned for both stdout and stderr of the subprocess. A single reader thread reads from the os_pipe's read-end line-by-line via `read_until(b'\n', &mut buf)`. The merge is **best-effort line atomicity, no cross-stream order guarantee**: each individual line is emitted whole (an individual `write(2)` for a single short line is typically atomic per POSIX), but the interleaving of stderr lines with stdout lines is determined by wall-clock arrival order at the pipe FIFO. Most rules filter by content and are insensitive to cross-stream ordering, so this guarantee is sufficient for v1.
+
+**Canonical answer:** Best-effort line atomicity; no cross-stream order guarantee; wall-clock-arrival ordering for the merge. No pty or select/epoll bookkeeping needed.
+
+**Implementation:** `crates/lacon-core/src/runtime/mod.rs` (PLAN-05). The pattern `os_pipe + single reader thread + crossbeam-channel` is documented in `01-05-SUMMARY.md`.
+
+See also: [D-11 in docs/architecture.md](architecture.md#stream-merge-guarantee-d-11).
 
 ### Claude Code hook mechanics — resolved (ADR 0013)
 

@@ -1018,6 +1018,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "lacon_benches"
+version = "0.1.0"
+
+[[package]]
 name = "lalrpop"
 version = "0.19.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
