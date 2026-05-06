@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Plan 02-01 complete (rusqlite + tracking scaffold + InvocationMeta extension)
-last_updated: "2026-05-06T14:16:21.636Z"
+stopped_at: Plan 02-02 complete (M0001_INITIAL migration + 11 schema/view tests)
+last_updated: "2026-05-06T14:31:22.250Z"
 last_activity: 2026-05-06
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 14
-  completed_plans: 9
-  percent: 64
+  completed_plans: 10
+  percent: 71
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Phase: 02 (Local tracking) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-05-06
 
-Progress: [██████░░░░] 64%
+Progress: [███████░░░] 71%
 
 ## Performance Metrics
 
@@ -59,6 +59,7 @@ Progress: [██████░░░░] 64%
 | Phase 01-engine-core-lacon-run-wrapper P07 | 6min | 2 tasks | 9 files |
 | Phase 01-engine-core-lacon-run-wrapper P08 | 8min | 3 tasks | 6 files |
 | Phase 02-local-tracking P01 | 10min | 2 tasks | 10 files |
+| Phase 02-local-tracking P02 | 10min | 2 tasks tasks | 9 files files |
 
 ## Accumulated Context
 
@@ -90,6 +91,9 @@ Full decision log lives in PROJECT.md "Key Decisions" (13 LOCKED ADRs). Recent d
 - [Phase ?]: [Phase 02-local-tracking PLAN-01]: D-03 InvocationMeta extension confirmed purely additive (grep -rn returned only def site); 5 fields added (assistant/session_id/project_path/command_normalized/raw_output_id)
 - [Phase ?]: [Phase 02-local-tracking PLAN-01]: Tracker struct ships as pub-from-day-one skeleton (one private bool field) so 02-02..02-04 attach methods without API breakage
 - [Phase ?]: [Phase 02-local-tracking PLAN-01]: D-18 normalize() is pure free fn (not method); 7 unit + 3 integration fixtures lock contract; pre-existing rustdoc warning in rules/schema.rs:72 logged in deferred-items.md (out of scope)
+- [Phase ?]: [Phase 02-local-tracking PLAN-02]: M0001_INITIAL DDL byte-exact per spec; HAVING COUNT(*) > 5 + DROP VIEW IF EXISTS pattern verified by grep
+- [Phase ?]: [Phase 02-local-tracking PLAN-02]: libsqlite3-sys 0.37 ships -DSQLITE_DEFAULT_FOREIGN_KEYS=1 — bundled rusqlite 0.39 has fks=ON by default; Plan 04 must still set pragma defensively
+- [Phase ?]: [Phase 02-local-tracking PLAN-02]: Plan 02 owns ALL Phase 2 pub mod declarations in tracking/mod.rs (migrations/privacy/health/prune/record); Plans 03/04/05 only overwrite stub files
 
 ### Pending Todos
 
@@ -114,6 +118,6 @@ None blocking. Three deferred-to-prototyping open questions assigned to phases a
 
 ## Session Continuity
 
-Last session: 2026-05-06T14:16:21.629Z
-Stopped at: Plan 02-01 complete (rusqlite + tracking scaffold + InvocationMeta extension)
-Resume file: .planning/phases/02-local-tracking/02-02-PLAN.md
+Last session: 2026-05-06T14:31:22.243Z
+Stopped at: Plan 02-02 complete (M0001_INITIAL migration + 11 schema/view tests)
+Resume file: .planning/phases/02-local-tracking/02-03-PLAN.md
