@@ -151,6 +151,15 @@ pub enum TrackingError {
     },
     #[error("tracking: system time before unix epoch")]
     Clock,
+    /// SQLite refused to engage WAL journal_mode and silently fell back to
+    /// `actual_mode` (e.g. `delete`, `memory`). D-10/D-11 sized the 200ms
+    /// busy_timeout for WAL contention; non-WAL mode would push concurrent
+    /// `lacon run` writes onto exclusive locks. Surface this as a hard error
+    /// so the best-effort caller can log "tracker unavailable on this
+    /// filesystem" rather than running silently in a degraded mode.
+    /// (WR-02 fix.)
+    #[error("tracking: SQLite rejected journal_mode=WAL; got `{actual_mode}` instead")]
+    WalRejected { actual_mode: String },
 }
 
 impl ValidationError {

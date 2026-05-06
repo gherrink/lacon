@@ -140,9 +140,21 @@ pub(crate) fn apply_connection_pragmas(conn: &Connection) -> Result<(), Tracking
     // (3) journal_mode=WAL — persistent on the DB file, but harmless to
     //     re-set on every connection. pragma_update_and_check verifies SQLite
     //     accepted the value rather than silently retaining the previous mode.
+    //
+    //     WR-02 fix: a `debug_assert_eq!` here panicked in debug builds on
+    //     filesystems that refuse WAL (e.g., some tmpfs / network mounts) and
+    //     silently degraded in release builds — both wrong. Concurrent
+    //     `lacon run` from sibling sessions need WAL: D-11's 200ms busy_timeout
+    //     was sized for WAL contention, not exclusive-lock contention. Return
+    //     a hard `TrackingError::WalRejected` instead so the best-effort
+    //     caller in `lacon-cli::commands::run::record_invocation` logs
+    //     "tracker unavailable" once and disables the tracker for the rest of
+    //     the invocation (D-12). The wrapper's exit code is unaffected.
     let mode: String = conn
         .pragma_update_and_check(None, "journal_mode", "WAL", |row| row.get(0))?;
-    debug_assert_eq!(mode.to_ascii_lowercase(), "wal");
+    if mode.to_ascii_lowercase() != "wal" {
+        return Err(TrackingError::WalRejected { actual_mode: mode });
+    }
 
     Ok(())
 }
