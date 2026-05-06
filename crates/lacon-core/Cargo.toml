@@ -1,0 +1,36 @@
+[package]
+name = "lacon-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+# Used by PLAN-02 (pipeline primitives) — RegexSet OR-merge, drop/keep/replace_regex
+regex = { workspace = true }
+# Used by PLAN-02 (Stage::step output accumulator)
+smallvec = { workspace = true }
+# Used by PLAN-03 (RuleFile, MatchSpec, RewriteSpec etc. derive Deserialize)
+serde = { workspace = true }
+# Used by PLAN-03 (rule + config YAML parsing with line-number errors)
+serde-saphyr = { workspace = true }
+# Used by PLAN-03 (bundled-rules embedding)
+rust-embed = { workspace = true }
+# Used by PLAN-03 (XDG path resolution for ~/.config/lacon/, ~/.local/share/lacon/)
+etcetera = { workspace = true }
+# Used by PLAN-04 (post_process AstModule + Globals + Module + Evaluator)
+starlark = { workspace = true }
+# Used by PLAN-05 (subprocess stdout+stderr merge — single writer cloned twice)
+os_pipe = { workspace = true }
+# Used by PLAN-05 (reader-thread → main-thread merge channel)
+crossbeam-channel = { workspace = true }
+# Used by PLAN-05 (POSIX signal forwarding to subprocess PID)
+nix = { workspace = true }
+# Used by PLAN-05 (signal handler watcher thread for SIGTERM/SIGINT)
+signal-hook = { workspace = true }
+# Used by PLAN-03..PLAN-05 (ValidationError + RuntimeError thiserror derive)
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+insta = { workspace = true }
