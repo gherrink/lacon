@@ -84,8 +84,9 @@ pub struct RunOutcome {
     pub duration_ms: u64,
 }
 
-/// Phase-2 tracker metadata. Defined here so Phase 2 can add the SQLite write
-/// alongside this struct without refactoring Phase 1 code.
+/// Tracker metadata assembled by `lacon-cli::commands::run` after `Runner::run`
+/// returns and INSERTed into `invocations` by `tracking::Tracker::record`.
+/// Phase 2 D-03: this struct is EXTENDED additively from Phase 1 — never redefine.
 #[derive(Debug, Clone)]
 pub struct InvocationMeta {
     /// Unix millisecond timestamp of invocation start.
@@ -110,6 +111,23 @@ pub struct InvocationMeta {
     pub rewritten: bool,
     /// Whether any `Stage::MaxBytes` stage emitted a truncation marker.
     pub truncated_by_max_bytes: bool,
+    // ─── Phase 2 additions (D-03) ──────────────────────────────────────
+    /// Assistant identifier. Populated from env `LACON_ASSISTANT` (default `"claude-code"`)
+    /// at the CLI assembly site. Maps to `invocations.assistant TEXT NOT NULL`.
+    pub assistant: String,
+    /// Optional session id from `LACON_SESSION_ID` (unset → None → SQL NULL).
+    /// Maps to `invocations.session_id TEXT` (nullable).
+    pub session_id: Option<String>,
+    /// Project root at invocation time (typically `std::env::current_dir().ok()`).
+    /// Maps to `invocations.project_path TEXT` (nullable).
+    pub project_path: Option<std::path::PathBuf>,
+    /// Stable command-grouping key produced by `tracking::normalize::normalize(&argv)`.
+    /// Maps to `invocations.command_normalized TEXT NOT NULL`.
+    pub command_normalized: String,
+    /// FK into `raw_outputs(id)`; populated only when `cfg.store_raw_outputs == true`
+    /// AND the raw output was successfully inserted. Maps to
+    /// `invocations.raw_output_id INTEGER REFERENCES raw_outputs(id) ON DELETE SET NULL`.
+    pub raw_output_id: Option<i64>,
 }
 
 /// `lacon run` runtime.

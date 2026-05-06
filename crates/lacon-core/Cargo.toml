@@ -30,6 +30,8 @@ nix = { workspace = true }
 signal-hook = { workspace = true }
 # Used by PLAN-03..PLAN-05 (ValidationError + RuntimeError thiserror derive)
 thiserror = { workspace = true }
+# Used by Phase 2 (tracking: SQLite invocations + raw_outputs + suspected_regressions)
+rusqlite = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

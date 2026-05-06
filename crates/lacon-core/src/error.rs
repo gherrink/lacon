@@ -125,6 +125,34 @@ pub enum RuntimeError {
     EmptyArgv,
 }
 
+/// Tracking subsystem error (Phase 2). Best-effort consumers (CLI commands/run.rs)
+/// log via `eprintln!` and never propagate via `?` per CONTEXT D-12.
+#[derive(thiserror::Error, Debug)]
+pub enum TrackingError {
+    #[error("tracking: failed to create data dir {path}: {source}")]
+    CreateDir {
+        path: std::path::PathBuf,
+        source: std::io::Error,
+    },
+    #[error("tracking: failed to set permissions on {path}: {source}")]
+    Chmod {
+        path: std::path::PathBuf,
+        source: std::io::Error,
+    },
+    #[error("tracking: sqlite open/migrate failed: {source}")]
+    Sqlite {
+        #[from]
+        source: rusqlite::Error,
+    },
+    #[error("tracking: privacy marker write failed at {path}: {source}")]
+    Marker {
+        path: std::path::PathBuf,
+        source: std::io::Error,
+    },
+    #[error("tracking: system time before unix epoch")]
+    Clock,
+}
+
 impl ValidationError {
     /// Extract the path from any variant. Useful for tests.
     pub fn path(&self) -> &std::path::Path {
@@ -201,5 +229,30 @@ mod tests {
             message: "cycle detected".to_owned(),
         };
         assert_eq!(err.path(), std::path::Path::new("cycle.yaml"));
+    }
+
+    #[test]
+    fn tracking_error_display_clock() {
+        let err = TrackingError::Clock;
+        assert_eq!(format!("{err}"), "tracking: system time before unix epoch");
+    }
+
+    #[test]
+    fn tracking_error_display_create_dir() {
+        let err = TrackingError::CreateDir {
+            path: PathBuf::from("/tmp/lacon"),
+            source: std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied"),
+        };
+        let s = format!("{err}");
+        assert!(s.starts_with("tracking: failed to create data dir /tmp/lacon:"));
+        assert!(s.contains("denied"));
+    }
+
+    #[test]
+    fn tracking_error_from_rusqlite_error() {
+        // Ensures the #[from] derive is wired correctly (?-friendly conversion).
+        let sqlite_err = rusqlite::Error::QueryReturnedNoRows;
+        let tracking: TrackingError = sqlite_err.into();
+        assert!(matches!(tracking, TrackingError::Sqlite { .. }));
     }
 }
