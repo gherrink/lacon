@@ -849,6 +849,7 @@ mod tests {
     }
 
     // Helper for single-step without flush
+    #[allow(dead_code)]
     fn stage_step_str<'a>(stage: &mut Stage, line: &'a str, out: &mut LineOut<'a>) {
         stage.step(Cow::Borrowed(line), out);
     }

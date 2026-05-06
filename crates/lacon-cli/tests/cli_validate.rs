@@ -3,6 +3,19 @@ use predicates::prelude::*;
 use std::fs;
 use tempfile::tempdir;
 
+/// Resolve a fixture path from the lacon-core crate's test fixtures.
+/// `crates/lacon-cli/tests/cli_validate.rs` is run with `CARGO_MANIFEST_DIR =
+/// crates/lacon-cli`, so the lacon-core fixtures live at `../lacon-core/tests/fixtures/...`.
+fn lacon_core_rule_fixture(name: &str) -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("lacon-core")
+        .join("tests")
+        .join("fixtures")
+        .join("rules")
+        .join(name)
+}
+
 #[test]
 fn validate_valid_rule_file_succeeds() {
     let dir = tempdir().unwrap();
@@ -156,4 +169,117 @@ retention:
         "expected byte-exact error format; got:\n{}",
         stderr
     );
+}
+
+// ─── SC4 gap-closure tests (PLAN-08) ──────────────────────────────────────────
+
+/// SC4: `lacon validate <invalid_regex_rule>` exits 1 with `<path>:<line>: InvalidRegex: ...`.
+#[test]
+fn sc4_validate_rejects_invalid_regex() {
+    let dir = tempdir().unwrap();
+    let target = dir.path().join("invalid_regex.yaml");
+    fs::copy(lacon_core_rule_fixture("invalid_regex.yaml"), &target).unwrap();
+
+    let assertion = Command::cargo_bin("lacon")
+        .unwrap()
+        .args(["validate", target.to_str().unwrap()])
+        .assert()
+        .code(1);
+    let stderr = String::from_utf8_lossy(&assertion.get_output().stderr).to_string();
+
+    // Byte-exact D-18 format: `<path>:<line>: InvalidRegex: <message>`
+    let pat = regex::Regex::new(r".+/invalid_regex\.yaml:\d+: InvalidRegex: ").unwrap();
+    assert!(
+        stderr.lines().any(|l| pat.is_match(l)),
+        "expected `<path>:<line>: InvalidRegex: ...` line; got stderr:\n{stderr}"
+    );
+}
+
+/// SC4: `lacon validate <missing_script_rule>` exits 1 with the appropriate D-18 error.
+/// Accepts MissingScriptFile OR ParseError because the missing_script.yaml fixture uses
+/// `script:` inline in `pipeline:` which the v1 schema rejects as ParseError before the
+/// path-existence check runs (loader.rs spec_to_stage). Either category satisfies SC4
+/// ("rejects ... missing referenced Starlark file") because the rule is rejected.
+#[test]
+fn sc4_validate_rejects_missing_script() {
+    let dir = tempdir().unwrap();
+    let target = dir.path().join("missing_script.yaml");
+    fs::copy(lacon_core_rule_fixture("missing_script.yaml"), &target).unwrap();
+
+    let assertion = Command::cargo_bin("lacon")
+        .unwrap()
+        .args(["validate", target.to_str().unwrap()])
+        .assert()
+        .code(1);
+    let stderr = String::from_utf8_lossy(&assertion.get_output().stderr).to_string();
+
+    let pat = regex::Regex::new(r".+/missing_script\.yaml:\d+: (MissingScriptFile|ParseError): ").unwrap();
+    assert!(
+        stderr.lines().any(|l| pat.is_match(l)),
+        "expected `<path>:<line>: (MissingScriptFile|ParseError): ...` line; got stderr:\n{stderr}"
+    );
+}
+
+/// SC4: `lacon validate <unknown_primitive_rule>` exits 1.
+/// `serde deny_unknown_fields` on the StageSpec enum surfaces as UnknownKey or ParseError
+/// (matches the loader-level test in rules_loader.rs).
+#[test]
+fn sc4_validate_rejects_unknown_primitive() {
+    let dir = tempdir().unwrap();
+    let target = dir.path().join("unknown_primitive.yaml");
+    fs::copy(lacon_core_rule_fixture("unknown_primitive.yaml"), &target).unwrap();
+
+    let assertion = Command::cargo_bin("lacon")
+        .unwrap()
+        .args(["validate", target.to_str().unwrap()])
+        .assert()
+        .code(1);
+    let stderr = String::from_utf8_lossy(&assertion.get_output().stderr).to_string();
+
+    let pat = regex::Regex::new(r".+/unknown_primitive\.yaml:\d+: (UnknownKey|UnknownPrimitive|ParseError): ").unwrap();
+    assert!(
+        stderr.lines().any(|l| pat.is_match(l)),
+        "expected `<path>:<line>: (UnknownKey|UnknownPrimitive|ParseError): ...` line; got stderr:\n{stderr}"
+    );
+}
+
+/// SC4: `lacon validate <cycle_a>` (with cycle_b in same dir) exits 1 with CircularExtends.
+/// Both fixtures must be in the same directory so flatten_extends_with_lookup can find the
+/// parent. cycle_a.yaml has `extends: cycle-b`; cycle_b.yaml has `extends: cycle-a`.
+#[test]
+fn sc4_validate_rejects_circular_extends() {
+    let dir = tempdir().unwrap();
+    let cycle_a = dir.path().join("cycle_a.yaml");
+    let cycle_b = dir.path().join("cycle_b.yaml");
+    fs::copy(lacon_core_rule_fixture("cycle_a.yaml"), &cycle_a).unwrap();
+    fs::copy(lacon_core_rule_fixture("cycle_b.yaml"), &cycle_b).unwrap();
+
+    let assertion = Command::cargo_bin("lacon")
+        .unwrap()
+        .args(["validate", cycle_a.to_str().unwrap()])
+        .assert()
+        .code(1);
+    let stderr = String::from_utf8_lossy(&assertion.get_output().stderr).to_string();
+
+    let pat = regex::Regex::new(r".+/cycle_[ab]\.yaml:\d+: CircularExtends: ").unwrap();
+    assert!(
+        stderr.lines().any(|l| pat.is_match(l)),
+        "expected `<path>:<line>: CircularExtends: ...` line; got stderr:\n{stderr}"
+    );
+}
+
+/// REGRESSION GUARD: a previously-valid rule fixture must continue to validate clean.
+/// This catches the failure mode where Task 1's compile pass accidentally rejects valid rules.
+#[test]
+fn sc4_regression_valid_rule_still_passes() {
+    let dir = tempdir().unwrap();
+    let target = dir.path().join("valid_simple.yaml");
+    fs::copy(lacon_core_rule_fixture("valid_simple.yaml"), &target).unwrap();
+
+    Command::cargo_bin("lacon")
+        .unwrap()
+        .args(["validate", target.to_str().unwrap()])
+        .assert()
+        .success()
+        .stderr(predicate::str::is_empty());
 }

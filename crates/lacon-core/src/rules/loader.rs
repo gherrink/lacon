@@ -40,6 +40,10 @@ use crate::rules::schema::{
     ScriptSpec, StageSpec,
 };
 
+/// Default `max_bytes` cap injected when a rule omits its own `MaxBytes` stage (D-07).
+/// Matches `RuleLoader::new`'s default. Exposed for `validate::validate_rule` reuse.
+pub const DEFAULT_MAX_BYTES: usize = 32_768;
+
 // ─── Public types ─────────────────────────────────────────────────────────────
 
 /// The layer a rule was found in (first-match-wins, ADR-0007).
@@ -112,7 +116,7 @@ impl RuleLoader {
             project_dir: project_dir.map(|p| p.join(".lacon").join("rules")),
             user_dir,
             cache: HashMap::new(),
-            defaults_max_bytes: 32768,
+            defaults_max_bytes: DEFAULT_MAX_BYTES,
         }
     }
 
@@ -330,8 +334,9 @@ pub fn shallow_probe_id(content: &str) -> Option<String> {
         .and_then(|p| p.id)
 }
 
-/// Try to find and parse a parent rule by ID inside a given directory.
-fn find_rule_in_dir(
+/// Find a rule by ID in the given directory. Used by `RuleLoader::parse_flatten_compile`
+/// for hot-path parent lookup AND by `validate::validate_rule` for standalone-file extends resolution.
+pub fn find_rule_in_dir(
     rule_id: &str,
     dir: &Path,
     child_path: &Path,

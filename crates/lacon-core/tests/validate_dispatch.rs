@@ -113,6 +113,38 @@ fn validate_dispatch_format_byte_exact() {
     assert!(parts.len() >= 2, "D-18 format requires at least path:line prefix: {formatted}");
 }
 
+// ─── SC4 gap-closure tests (PLAN-08) ──────────────────────────────────────────
+
+/// SC4: validate_file MUST reject a rule with an invalid regex (compile-time).
+/// Mirrors the library-level test `invalid_regex_rejected` in `rules_loader.rs:126`,
+/// but at the `validate_file` boundary (which is what `lacon validate` calls).
+#[test]
+fn validate_file_rejects_invalid_regex() {
+    let path = fixtures_dir().join("rules").join("invalid_regex.yaml");
+    let errs = validate_file(&path);
+    assert!(
+        errs.iter().any(|e| matches!(e, ValidationError::InvalidRegex { .. })),
+        "validate_file must catch InvalidRegex on `drop_regex: '['`; got: {errs:?}"
+    );
+}
+
+/// SC4: validate_file MUST reject a rule whose Starlark `script.path` does not exist.
+/// Mirrors `missing_script_rejected` in `rules_loader.rs:151`, at the validate_file boundary.
+/// Note: missing_script.yaml uses `script:` inline in `pipeline:` which the v1 schema
+/// rejects as ParseError ("inline `script:` is not supported in v1") before the path-existence
+/// check runs. Either MissingScriptFile or ParseError satisfies SC4 — the rule is rejected.
+#[test]
+fn validate_file_rejects_missing_script() {
+    let path = fixtures_dir().join("rules").join("missing_script.yaml");
+    let errs = validate_file(&path);
+    assert!(
+        errs.iter().any(|e| matches!(e,
+            ValidationError::MissingScriptFile { .. } | ValidationError::ParseError { .. }
+        )),
+        "validate_file must catch MissingScriptFile (or ParseError for inline-script v1 unsupported) on `script: nonexistent.star`; got: {errs:?}"
+    );
+}
+
 // ─── Test 7: dispatch uses id + match key detection (not filename) ─────────────
 
 #[test]

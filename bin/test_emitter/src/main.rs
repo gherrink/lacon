@@ -62,7 +62,7 @@ fn main() {
         let mut written = 0;
         while written < args.bytes {
             let chunk = (args.bytes - written).min(80);
-            let s: String = std::iter::repeat('a').take(chunk).collect();
+            let s: String = "a".repeat(chunk);
             writeln!(so, "{}", s).unwrap();
             written += chunk + 1; // +1 for \n
         }

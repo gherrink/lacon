@@ -118,21 +118,57 @@ fn infer_config_layer(path: &Path) -> ConfigLayer {
 }
 
 /// Validate a rule file at `path` with content `content`.
+///
+/// Wires the full compile pipeline so SC4 (Phase 1 success criterion) is satisfied:
+/// 1. Schema parse via `parse_one` — catches `UnknownKey` (deny_unknown_fields) and
+///    `ParseError` (malformed YAML, including unknown StageSpec variants like `reverse_lines`).
+/// 2. `extends` flattening via `flatten_extends_with_lookup` with a same-directory parent
+///    lookup closure — catches `CircularExtends`. Parents are looked up in `path.parent()`.
+/// 3. `compile_resolved` — catches `InvalidRegex` (regex compile fails) and
+///    `MissingScriptFile` (Starlark script path absolute / contains `..` / does not exist).
+///
+/// The resulting `ResolvedRule` is discarded — we only care whether the compile pass succeeded.
 fn validate_rule(path: &Path, content: &str) -> Vec<ValidationError> {
-    // Full typed parse via RuleFile (deny_unknown_fields fires for unknown keys).
-    match parse_one(content, path) {
-        Ok(_rule) => {
-            // Schema valid. Full compile (regex, script paths) would require
-            // RuleLoader with layer context — that's the `lacon validate` full
-            // path wired in PLAN-06. For standalone `validate_file`, schema
-            // correctness is sufficient.
-            //
-            // Note: `extends` resolution is not attempted here because we don't
-            // have a layer context to look up parents. PLAN-06 wires the full eager
-            // load path (`RuleLoader::load_all`) for the `lacon validate` CLI command.
-            Vec::new()
-        }
-        Err(e) => vec![e],
+    // Step 1: schema parse.
+    let rule = match parse_one(content, path) {
+        Ok(r)  => r,
+        Err(e) => return vec![e],
+    };
+
+    // Step 2: flatten extends. Look up parents in the same directory as `path`.
+    // For files outside any rules directory (ad-hoc validation), this still works
+    // because `find_rule_in_dir` returns `None` when the parent ID is not present —
+    // which produces a `ParseError` ("could not find parent rule") for the user.
+    let parent_dir = path
+        .parent()
+        .map(|p| p.to_owned())
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+    let mut visited = std::collections::HashSet::new();
+    let lookup = |parent_id: &str, child_path: &Path| {
+        crate::rules::loader::find_rule_in_dir(parent_id, &parent_dir, child_path)
+    };
+
+    let flat = match crate::rules::loader::flatten_extends_with_lookup(
+        rule,
+        path,
+        &mut visited,
+        &lookup,
+    ) {
+        Ok(f)  => f,
+        Err(e) => return vec![e],
+    };
+
+    // Step 3: compile pass. Catches InvalidRegex, MissingScriptFile, and any
+    // remaining ParseError surfaces (e.g. Starlark parse failure).
+    match crate::rules::loader::compile_resolved(
+        flat,
+        path,
+        crate::rules::loader::RuleSource::Project, // synthetic — unused after compile
+        crate::rules::loader::DEFAULT_MAX_BYTES,
+    ) {
+        Ok(_resolved) => Vec::new(),
+        Err(e)        => vec![e],
     }
 }
 
