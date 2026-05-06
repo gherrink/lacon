@@ -798,22 +798,19 @@ fn forward_signal_to_child(child_pid: u32, signal: Signal) {
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **`serde-saphyr` Value API completeness**
-   - What we know: `serde-saphyr` 0.0.26 supports serde `Deserialize` derive and has line/column error reporting
-   - What's unclear: Whether it exposes a `serde_yaml::Value`-equivalent for the `lacon validate` content dispatch (check for top-level `id` and `match` keys without a known type)
-   - Recommendation: In Wave 0 (setup), add `serde-saphyr` and write a 5-line test: `serde_saphyr::from_str::<serde_saphyr::Value>(yaml_str)`. If `Value` is not available, fall back to `saphyr` (the underlying parser crate) for key inspection.
+1. **`serde-saphyr` Value API completeness** — RESOLVED (deferred to Wave-0 smoke test)
+   - What we know: `serde-saphyr` 0.0.26 supports serde `Deserialize` derive and has line/column error reporting.
+   - **Resolution:** Wave-0 smoke test in PLAN-01 verifies whether `serde_saphyr::from_str::<serde_saphyr::Value>(yaml_str)` works for the `id`+`match` content-dispatch check. If the smoke test passes, proceed with `serde-saphyr` for both typed struct and untyped `Value` parsing. **If the smoke test fails**, fall back to using the `saphyr` crate (the underlying parser) directly for the dispatch path while keeping `serde-saphyr` for typed struct parsing (success path on a known schema). PLAN-01 Task 3 owns this decision and commits the choice via the workspace dependency lock.
 
-2. **`starlark` MSRV**
-   - What we know: Active workspace toolchain is 1.94.1; workspace MSRV set to 1.80 (conservative)
-   - What's unclear: `starlark 0.13.0` may require a higher MSRV than 1.80
-   - Recommendation: Run `cargo add starlark@0.13` and check the resolver's MSRV violation output.
+2. **`starlark` MSRV** — RESOLVED (deferred to Wave-0 smoke test)
+   - What we know: Active workspace toolchain is 1.94.1; workspace MSRV initially set to 1.80 (conservative).
+   - **Resolution:** PLAN-01 Task 3 runs `cargo add starlark@0.13` and inspects the resolver output. **If MSRV violation reported**, raise the workspace MSRV to whatever `starlark 0.13` requires (commit the bump in the same plan that adds the dep). We'd rather bump the MSRV than swap Starlark — the choice of `starlark-rust` is locked in ADR-0003. Final MSRV recorded in `Cargo.toml`'s `rust-version` and pinned in `rust-toolchain.toml`.
 
-3. **Process-group kill vs single-PID on macOS**
-   - What we know: `nix::kill(Pid::from_raw(pid), SIGTERM)` sends to a single process; child processes of `cargo build` etc. will not be killed
-   - What's unclear: Whether Claude Code's 2-minute timeout for Bash tool leaves long-running subprocesses as zombies in practice
-   - Recommendation: Accept v1 single-PID semantics; add a comment in `runtime.rs` referencing this as a known limitation; track in `docs/open-questions.md` for v2.
+3. **Process-group kill vs single-PID on macOS** — RESOLVED (accepted as v1 limitation)
+   - What we know: `nix::kill(Pid::from_raw(pid), SIGTERM)` sends to a single process; child processes of `cargo build` etc. will not be killed.
+   - **Resolution:** v1 ships with single-PID kill semantics — D-12 in CONTEXT.md is the source of truth. The known-limitation comment is added in `crates/lacon-core/src/runtime/signal.rs` (or whichever module owns the signal forwarder), and the residual zombie-process risk is tracked in `docs/open-questions.md` for v2 reconsideration. PLAN-05 Task 1 owns adding the comment.
 
 ---
 
