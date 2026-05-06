@@ -29,7 +29,14 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
   3. A rule's `on_error` block fully replaces the success pipeline (and optionally `post_process`) when the subprocess exits non-zero, with the success buffer discarded.
   4. `lacon validate <path>` accepts both rule files and `config.yaml` files, dispatches by content (`id`+`match` → rule), and rejects invalid regex / unknown primitive / circular `extends` / missing referenced Starlark file at load time without falling back to defaults.
   5. The `extends` directive prepends the parent's pipeline to the child's, inherits scalar fields the child omits, flattens single-level chains at load time, and rejects cycles.
-**Plans**: TBD
+**Plans**: 7 plans
+- [ ] 01-01-PLAN.md — Workspace scaffolding & cargo check green
+- [ ] 01-02-PLAN.md — Pipeline core: Stage enum + 10 native primitives + golden fixtures
+- [ ] 01-03-PLAN.md — Rule loader: schema + extends flatten + lacon validate dispatch + bundled embedding
+- [ ] 01-04-PLAN.md — Starlark post_process host (hermetic) + Pipeline integration
+- [ ] 01-05-PLAN.md — lacon run runtime: subprocess merge, dual-buffer, on_error swap, bypass, signal forwarding
+- [ ] 01-06-PLAN.md — CLI surface: clap derive, lacon run + lacon validate wiring, 6-command cap
+- [ ] 01-07-PLAN.md — End-to-end integration tests + cold-start probe + benchmark findings
 
 **Implementation-time decisions to settle in this phase** (deferred-to-prototyping per `docs/open-questions.md`):
 - **Q-deferred-signal-forwarding**: When Claude Code's Bash tool times out or the user interrupts, what does `lacon run` do? Likely answer: SIGTERM forward + immediate exit for v1, no drain. Settle the first time `lacon run` actually handles a signal in integration testing.
@@ -100,7 +107,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 5 (bundl
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Engine core & `lacon run` wrapper | 0/TBD | Not started | - |
+| 1. Engine core & `lacon run` wrapper | 0/7 | Not started | - |
 | 2. Local tracking | 0/TBD | Not started | - |
 | 3. Claude Code adapter & `lacon init` | 0/TBD | Not started | - |
 | 4. CLI completion (`stats`, `explain`, `doctor`) | 0/TBD | Not started | - |
