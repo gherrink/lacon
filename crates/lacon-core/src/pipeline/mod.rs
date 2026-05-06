@@ -113,6 +113,30 @@ impl Pipeline {
         output
     }
 
+    /// Run lines through native stages, then optionally invoke a Starlark
+    /// `post_process` script on the aggregated output (ADR-0008).
+    ///
+    /// Per CON-filter-rule-post-process, `post_process` runs ONCE on the
+    /// aggregated output after all native primitives have flushed. `max_bytes`
+    /// is the last native stage per CON-filter-rule-native-primitives; Starlark
+    /// runs after it, so the script may technically re-grow output beyond the
+    /// native cap. This is documented behaviour — the YAML schema places
+    /// `post_process` outside the pipeline (it is not a pipeline stage).
+    ///
+    /// If `post_process` is `None`, returns the native pipeline output as-is.
+    pub fn run_with_post_process(
+        &mut self,
+        lines: impl Iterator<Item = String>,
+        post_process: Option<&crate::starlark_host::StarlarkScript>,
+        ctx: &crate::starlark_host::ScriptCtx,
+    ) -> Result<Vec<String>, crate::error::RuntimeError> {
+        let aggregated = self.run(lines);
+        match post_process {
+            Some(script) => script.run(ctx, aggregated),
+            None => Ok(aggregated),
+        }
+    }
+
     /// Returns the number of stages in the pipeline (after OR-merge).
     pub fn stage_count(&self) -> usize {
         self.stages.len()

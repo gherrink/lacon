@@ -64,8 +64,12 @@ pub struct ResolvedRule {
     /// On-error pipeline (non-zero exit). `None` if the rule has no `on_error` block.
     /// Also always has a terminal MaxBytes stage when present (D-07, independent of success pipeline).
     pub on_error_pipeline: Option<Pipeline>,
-    /// Resolved Starlark script path for `post_process` (if present).
-    pub script_path: Option<PathBuf>,
+    /// Parsed Starlark `post_process` script for the success path (if present).
+    /// Populated at parse time (D-14 lazy resolve); PLAN-05 calls
+    /// `Pipeline::run_with_post_process` with this value.
+    pub post_process: Option<crate::starlark_host::StarlarkScript>,
+    /// Parsed Starlark `post_process` script for the on_error path (if present).
+    pub on_error_post_process: Option<crate::starlark_host::StarlarkScript>,
 }
 
 /// Cache value: flat RuleFile + metadata needed to recompile without disk I/O.
@@ -493,9 +497,19 @@ pub fn compile_resolved(
         None
     };
 
-    // Resolve post_process script path (T-03-04 mitigation).
-    let script_path = if let Some(ref pp) = rule.post_process {
-        Some(resolve_script_path(&pp.path, source_path)?)
+    // Resolve and parse post_process Starlark scripts (T-04-03 path-traversal guard).
+    let post_process = if let Some(ref pp) = rule.post_process {
+        Some(resolve_script(pp, source_path)?)
+    } else {
+        None
+    };
+
+    let on_error_post_process = if let Some(ref on_err) = rule.on_error {
+        if let Some(ref pp) = on_err.post_process {
+            Some(resolve_script(pp, source_path)?)
+        } else {
+            None
+        }
     } else {
         None
     };
@@ -506,7 +520,8 @@ pub fn compile_resolved(
         rule,
         success_pipeline,
         on_error_pipeline,
-        script_path,
+        post_process,
+        on_error_post_process,
     })
 }
 
@@ -711,4 +726,26 @@ fn resolve_script_path(script_path: &Path, rule_path: &Path) -> Result<PathBuf, 
     }
 
     Ok(resolved)
+}
+
+/// Resolve a `ScriptSpec` from a rule file: validate path, read content, parse Starlark.
+///
+/// Reuses `resolve_script_path` for the path-traversal guard (T-04-03).
+/// Parse errors are returned as `ValidationError::ParseError` (fail at rule load time,
+/// not at run time).
+fn resolve_script(
+    spec: &ScriptSpec,
+    rule_path: &Path,
+) -> Result<crate::starlark_host::StarlarkScript, ValidationError> {
+    // Path validation and existence check (T-04-03).
+    let resolved = resolve_script_path(&spec.path, rule_path)?;
+
+    // Read the script content.
+    let content = std::fs::read_to_string(&resolved).map_err(|e| ValidationError::Io {
+        path: resolved.clone(),
+        source: e,
+    })?;
+
+    // Parse the Starlark source — fail at rule load time if invalid.
+    crate::starlark_host::StarlarkScript::parse(&content, spec.function.clone(), resolved)
 }

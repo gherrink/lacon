@@ -225,8 +225,10 @@ mod tests {
             PathBuf::from("ctx.star"),
         )
         .unwrap();
-        let mut ctx = ScriptCtx::default();
-        ctx.exit_code = 42;
+        let ctx = ScriptCtx {
+            exit_code: 42,
+            ..Default::default()
+        };
         let out = script.run(&ctx, vec![]).unwrap();
         assert_eq!(out, vec!["42".to_owned()]);
     }
