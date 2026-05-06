@@ -2,79 +2,80 @@
 
 Things we don't yet know that could change the design. Each one needs an answer (or a "we accept the unknown") before the relevant part of v1 ships.
 
-## Claude Code hook mechanics
+## Claude Code hook mechanics — resolved (ADR 0013)
 
-We've committed to using `PreToolUse` and `PostToolUse` hooks, but several practical questions remain unverified:
+The load-bearing question — *can a hook modify output before the model sees it?* — was resolved by an empirical probe against live Claude Code on 2026-05-05.
 
-- **What exactly does the hook receive?** Documented schema vs. what's actually in the JSON payload. Does it include exit code? Duration? Working directory?
-- **Can the hook modify the command before execution?** (Required for the `rewrite` feature.) If not, we need a different rewrite path.
-- **Can the hook modify the output before the model sees it?** (Required for filtering.) If the model sees the raw output regardless of what the hook returns, the entire approach collapses.
-- **What's the timeout?** If the hook takes too long, does Claude Code abort, return raw output, or hang?
-- **Hook execution context.** TTY? stdin? environment variables?
+**Findings (verified against `code.claude.com/docs/en/hooks` and the probe):**
 
-**Action:** Verify against current Claude Code docs and a small experimental hook before locking the v1 design.
+- `PreToolUse` rewrites commands via `hookSpecificOutput.updatedInput` (replaces the entire input object — unchanged fields must be echoed back).
+- `PostToolUseFailure` is a real, distinct event from `PostToolUse`.
+- Bash `tool_response` is structured: `{stdout, stderr, interrupted, isImage}`.
+- Hook output is capped at 10,000 characters — anything larger is elided to a file and replaced with a preview + path.
+- Hook config lives where expected: `.claude/settings.json` (project) and `~/.claude/settings.json` (user). Default hook timeout is 600 s.
+- `additionalContext` is delivered to the model as a `<system-reminder>` appended **after** the raw tool output. Additive, not replacement.
 
-## Starlark performance at hook scale
+**The blocker:** `PostToolUse` **cannot** replace tool output. There is no `updatedToolOutput` field; the probe confirmed that returning one has no effect, and the model receives the raw stdout regardless.
 
-Starlark startup overhead is small (<5ms) but it gets invoked on every command Claude Code runs that hits a rule with `post_process`. In a busy session that could be hundreds of times.
+**Resolution:** [ADR 0013](decisions/0013-filter-via-pretooluse-wrapper.md). v1 filters output via a `PreToolUse`-rewritten command that wraps the original in `lacon run --rule <id> -- <cmd>`, so filtering happens inside the subprocess wrapper before Claude Code captures the tool result. The streaming pipeline, rule schema, primitives, and Starlark stage are unchanged — only their execution location moves from "hook responder" to "subprocess wrapper."
 
-- **Can we keep a Starlark interpreter alive across invocations?** A persistent daemon would amortize startup. But it adds complexity (lifecycle, IPC, restart on rule change) and we've otherwise committed to a daemon-less design.
-- **Or do we just measure and accept it?** If 5ms × 200 invocations is 1 second of total session overhead, that's tolerable.
+`additionalContext` is reserved for v1.5: annotation of unmatched commands ("lacon could have stripped ~3 kB if it had a rule for this").
 
-**Action:** Benchmark Starlark cold-start with `starlark-rust` once we have a prototype. Decide based on data.
+## Starlark performance at hook scale — resolved (2026-05-06)
 
-## Chained command behavior
+Starlark startup overhead is small (<5ms) but it gets invoked on every command Claude Code runs that hits a rule with `post_process`. In a busy session that could be hundreds of times. The original question had two parts: *will it actually be a problem?* (unanswerable without a prototype to benchmark) and *if yes, daemon or accept?* (answerable now, on architectural grounds).
 
-We split on top-level `&&`, `||`, `;` and filter each segment independently. Edge cases:
+**Resolution:** No daemon in v1, regardless of benchmark outcome. Reasoning:
 
-- What if the second command's behavior depends on the first command's output (which we just filtered)? Probably fine since the assistant cares about final state, not intermediate, but worth confirming.
-- What about `&&` chains where the rule for one segment is "bypass" and another is "filter"? Pretty sure the answer is "respect each rule independently" but the user-facing semantics need to be documented clearly.
-- What if a chain contains an interactive command (e.g. `git rebase -i && pnpm test`)? The TUI heuristic only triggers if we know the first command, but the rule may not have run by then.
+- Daemon-less is a load-bearing property of the design, not a preference. Re-introducing lifecycle, IPC, and rule-reload concerns to amortize a cost we haven't measured is the wrong trade.
+- `post_process` is opt-in per rule. A rule author using it is choosing a heavier primitive; that's a fair cost to expose to rule authors, not something to hide behind a daemon.
+- `post_process` runs once on aggregated output (ADR 0008), not per line. Worst-case multiplier is "matched commands per session," not "lines × commands."
+- If cold-start turns out to be slow, in-process levers remain available: lazy interpreter init (only when a matched rule has `post_process`), bytecode caching, scoping `post_process` capabilities. Benchmarking is a post-prototype tuning task, not a design blocker.
 
-**Action:** Write down explicit rules for chained-command handling in the spec, then write tests against representative inputs.
+If v2 benchmarks show in-process optimization isn't enough, a persistent helper process can be reconsidered then — with real data driving the daemon-vs-no-daemon trade.
 
-## What lives outside hooks
+## Chained command behavior — resolved (2026-05-06)
 
-If a Claude Code skill spawns a subprocess that's not via the Bash tool, the hook doesn't fire. Same for:
+Full semantics now live in [chained-commands](specs/chained-commands.md). Summary of resolutions:
 
-- Long-running watchers started by the assistant (`pnpm dev`, `cargo watch`)
-- Output that bypasses our hook (e.g. tools that write directly to terminal control sequences)
-- The user's own terminal sessions (intentionally out of scope, but worth confirming users don't expect us to cover them)
+- **"Second command depends on first command's output"** — non-issue. `lacon run` propagates exit codes unchanged and only filters its own stdout (what Claude Code captures). The shell-level data flow between segments is untouched. Filtering changes what the model sees, not what the next command sees.
+- **Per-segment rule semantics** — each segment is resolved independently with first-match-wins and project > user > bundled precedence. No merging, no cross-segment effects. Matched segments are wrapped as `lacon run --rule <id> -- <segment>`, unmatched segments pass through, and the original operators are preserved.
+- **TUI-in-chain (v1)** — if any segment matches the TUI heuristic, the **entire chain** is bypassed. Conservative by design; granular per-segment bypass is a [backlog](backlog.md) v2 candidate gated on tracking data showing the lost filtering opportunity is material.
 
-**Action:** Document the boundary clearly in the README so users have correct expectations.
+User-driven bypass (`!!`, `LACON_DISABLE=1`) remains whole-command. The splitting boundary (top-level operators only — quotes, subshells, command substitution, heredocs are opaque) is captured in the spec along with the test obligations for the splitter.
 
-## Tokenizer choice (deferred but worth flagging)
+## What lives outside hooks — resolved (2026-05-06)
 
-When we eventually move from byte-based to token-based accounting, we need to choose a tokenizer:
+Boundary documented in [v1-scope → Coverage boundary](v1-scope.md#coverage-boundary). The original concerns sort into three categories:
 
-- **Anthropic's Claude tokenizer** — most accurate for Claude Code users but the SDK to access it is closed, and we'd be wrong for non-Claude assistants
-- **tiktoken (OpenAI)** — open, well-maintained, accurate-ish for many models
-- **A heuristic (e.g. bytes / 4)** — wrong but free
+- **Fundamental limitation:** subprocesses from non-Bash tools or MCP servers don't flow through `PreToolUse(Bash)`, so `lacon` can't see them.
+- **By design:** redirected output (to files, backgrounded processes, `/dev/tty`) is invisible to both `lacon` and the model — there's nothing to filter because the model isn't seeing it either.
+- **Out of scope:** user's own terminal sessions.
 
-This is deferred to backlog but the choice will affect the tracking schema, so worth thinking ahead.
+Long-running watchers and ANSI/control-sequence output were partially misframed in the original list. Foreground watcher output is filtered up to the tool timeout like any other command; backgrounded output never reaches the model. ANSI escapes that flow through stdout/stderr are filterable via `strip_ansi` — not a coverage gap. README copy can lift from the v1-scope section when written.
 
-## Privacy and `raw_outputs`
+## Tokenizer choice — resolved-as-deferred (2026-05-06)
 
-If we let users opt into raw output retention for `lacon explain`, we will store strings that may contain:
+The schema impact concern is settled: existing tracking columns are explicitly byte-named (`raw_stdout_bytes`, `raw_stderr_bytes`, `filtered_bytes`), so adding token columns later is a normal append-only migration ([ADR 0011](decisions/0011-sqlite-for-tracking.md)) with no v1 work required.
 
-- API keys printed by misconfigured tools
-- Local file paths that reveal user identity
-- Customer data in test fixtures
+The tokenizer choice itself is a v2 design decision and lives under [backlog → Per-token accounting](backlog.md), with the three-option tradeoff (Anthropic's tokenizer, tiktoken, heuristic) captured there for whoever picks it up. One factual update from the original framing: Anthropic's tokenizer is no longer closed — it's reachable via the Messages API `count_tokens` endpoint and via vendorable open packages, so the v2 trade is more "online API vs. vendored vs. heuristic" than "closed vs. open."
 
-We've committed to off-by-default and 0700 directory permissions. Other things to consider:
+## Privacy and `raw_outputs` — resolved (2026-05-06)
 
-- **Redaction patterns** — drop lines matching common secret patterns before storing. Is the false-negative rate acceptable?
-- **A `lacon purge` command** — for deleting all raw outputs, all entries from a date range, etc.
-- **Encryption at rest** — probably overkill for v1, but should be a backlog item.
+v1 contract is now documented in [tracking-data-model → Privacy](specs/tracking-data-model.md#privacy):
 
-**Action:** Decide whether v1 ships any redaction logic at all, or just relies on off-by-default plus permissions plus a warning in docs.
+- **Off by default + `0700` + opt-in stderr warning** on the first off → on transition. That's the v1 protection.
+- **No automatic redaction.** Best-effort regex stripping creates false-confidence risk (false negatives leak, false positives drop legitimate output) and would imply a "lacon redacts secrets" feature claim we can't honor. Deferred to [backlog](backlog.md) gated on real user-regret signal.
+- **No `lacon purge` command in v1.** Users clear retained data via `rm` on the DB file or direct `sqlite3 DELETE`. Adding `purge` would push the v1 CLI past its 6-command boundary; deferred to [backlog](backlog.md).
+- **Encryption at rest** — already backlog material. v1 stance unchanged.
 
-## Testing strategy for rules
+A side-effect of this resolution: the tracking spec previously documented `lacon purge` subcommands as if they shipped in v1, contradicting `v1-scope.md`. The spec has been corrected to match the 6-command v1 surface and the manual cleanup path.
 
-Each bundled rule needs to be tested against representative output. Where do we get that output?
+## Testing strategy for rules — resolved (2026-05-06)
 
-- Capturing real output from `pnpm install` etc. is easy, but it varies by version, OS, lockfile state, registry latency
-- Synthetic fixtures are stable but can drift from reality
-- Testing in CI requires those tools to be installed in CI
+Strategy now lives in [testing-rules](testing-rules.md). Summary:
 
-**Action:** Settle on a fixture-based testing strategy; document how to regenerate fixtures when the underlying tool changes its output format.
+- **Fixture-based, hermetic CI.** Each bundled rule has captured `input.txt` / `expected.txt` / `meta.yaml` triples under `bundled-rules/<rule-id>/fixtures/<scenario>/`. A single Rust integration test walks the tree and asserts byte-exact rule output against expectations. CI never installs `pnpm`, `cargo`, etc.
+- **Per-fixture assertions:** byte-exact output match, ≥50% reduction (skippable for edge-case fixtures via `meta.yaml` flag), and an opt-in `must_keep_lines` list for explicitly preserving error/warning substrings.
+- **Regeneration is a developer-local manual step**, helped by `scripts/capture-fixtures.sh`. Procedure documented in the new doc. Periodic re-capture is on the developer, not CI.
+- **Deferred to [backlog](backlog.md):** user-facing `lacon validate --fixtures` for project rules, and automated CI drift detection.

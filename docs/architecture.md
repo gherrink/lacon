@@ -1,37 +1,56 @@
 # Architecture
 
+> **Updated 2026-05-05** per [ADR 0013](decisions/0013-filter-via-pretooluse-wrapper.md). Filtering happens inside a subprocess wrapper (`lacon run`) invoked by a `PreToolUse`-rewritten command, not inside a `PostToolUse` hook. Empirical testing showed `PostToolUse` cannot replace tool output, so the original "hook responds with filtered bytes" flow was abandoned. The internal pipeline, primitives, Starlark stage, tracker, and rule schema are unchanged — only their execution location moved.
+
 ## Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ Coding assistant (Claude Code, Cursor, ...)                 │
+│ Claude Code                                                 │
 │                                                             │
-│   ┌──────────┐   PreToolUse                                 │
-│   │   Bash   ├──────────────┐                               │
-│   │   tool   │              │                               │
-│   │          ├─exec─┐  PostToolUse                          │
-│   └──────────┘      │       │                               │
-└─────────────────────┼───────┼───────────────────────────────┘
-                      │       │
-                      ▼       ▼
-              ┌──────────────────────┐
-              │   lacon (this tool)  │
-              │  ┌────────────────┐  │
-              │  │   Adapter      │  │  one per assistant
-              │  └───────┬────────┘  │
-              │          ▼           │
-              │  ┌────────────────┐  │
-              │  │  Rule resolver │◄─┼── rules/  (project, user, bundled)
-              │  └───────┬────────┘  │
-              │          ▼           │
-              │  ┌────────────────┐  │
-              │  │ Pipeline runner│◄─┼── primitives + Starlark VM
-              │  └───────┬────────┘  │
-              │          ▼           │
-              │  ┌────────────────┐  │
-              │  │    Tracker     │──┼──► history.db (SQLite)
-              │  └────────────────┘  │
-              └──────────────────────┘
+│   Bash tool                                                 │
+│      │                                                      │
+│      │ PreToolUse (command + tool_input)                    │
+│      ▼                                                      │
+│   ┌────────────────────────────────────────┐                │
+│   │ lacon adapter (Claude Code-specific)   │                │
+│   │  - resolves rule (project > user > bundled) │           │
+│   │  - applies rewrite block (flag add/remove)  │           │
+│   │  - if matched: rewrites command to          │           │
+│   │      lacon run --rule <id> -- <inner-cmd>   │           │
+│   │  - if !! prefix or LACON_DISABLE: passes through │      │
+│   │  - returns hookSpecificOutput.updatedInput  │           │
+│   └────────────────┬───────────────────────┘                │
+│                    │                                        │
+│                    ▼                                        │
+│            shell exec                                       │
+│                    │                                        │
+└────────────────────┼────────────────────────────────────────┘
+                     │  (only when wrapped)
+                     ▼
+       ┌──────────────────────────────┐
+       │  lacon run                   │
+       │  ┌────────────────────────┐  │
+       │  │  spawned subprocess    │  │  stdout + stderr
+       │  │  (the original cmd)    │──┼──  merged via 2>&1
+       │  └────────────┬───────────┘  │
+       │               ▼              │
+       │  ┌────────────────────────┐  │
+       │  │  Pipeline runner       │◄─┼── primitives + Starlark VM
+       │  │  (success or on_error  │  │
+       │  │   selected by exit code)│ │
+       │  └────────────┬───────────┘  │
+       │               ▼              │
+       │  ┌────────────────────────┐  │
+       │  │  Tracker               │──┼──► history.db (SQLite)
+       │  └────────────┬───────────┘  │
+       │               ▼              │
+       │       filtered stdout        │
+       └───────────────┬──────────────┘
+                       │
+                       ▼
+              tool_result Claude Code
+              captures and shows the model
 ```
 
 ## Components
@@ -48,31 +67,37 @@
 
 ### Adapters (assistant-specific)
 
-An adapter translates from "the assistant just ran a command and got this output" to a core invocation. For Claude Code (v1):
+An adapter translates the assistant's hook contract into a rewritten command that invokes `lacon run`. For Claude Code (v1):
 
-- `PreToolUse` hook receives the command, decides whether to bypass (`!!` prefix, env var, no matching rule), and may rewrite it
-- `PostToolUse` hook receives the raw output and exit code, runs the pipeline, returns the filtered result
+- `PreToolUse` hook receives the Bash tool's input (command + args).
+- The adapter checks `!!` prefix, `LACON_DISABLE`, and the rule resolver. If a rule matches, it applies the rule's `rewrite` block to the inner argv and wraps the result as `lacon run --rule <id> -- <inner-cmd>`.
+- The adapter returns `hookSpecificOutput.updatedInput` with the rewritten command. (`updatedInput` replaces the entire input object, so unchanged fields — `description`, `timeout`, `run_in_background` — must be echoed back.)
+- No `PostToolUse` hook is installed in v1. (Reserved for v1.5 — see [ADR 0013](decisions/0013-filter-via-pretooluse-wrapper.md).)
 
-Adapters are otherwise dumb: they don't know about rules, primitives, or storage. The core engine exposes a single function: `process(invocation) -> filtered_output`.
+Adapters are otherwise dumb: they don't know about pipeline primitives or storage. They translate the hook contract; `lacon run` does the work.
+
+### Wrapper (`lacon run`)
+
+`lacon run --rule <id> -- <cmd> [args...]` spawns the subprocess, reads its merged stdout+stderr line-by-line, runs the pipeline (or the rule's `on_error` pipeline when the subprocess exits non-zero), writes filtered bytes to its own stdout, writes the tracking row to SQLite, and exits with the subprocess's exit code. `lacon run` without `--rule` runs the resolver inline — the same code path the hook uses, useful for manual testing.
 
 ## Lifecycle of an invocation
 
 1. Claude Code is about to run `pnpm install --frozen-lockfile`.
 2. `PreToolUse` hook fires. The Claude Code adapter:
-   - Checks for `!!` prefix → not present, continue
-   - Checks `LACON_DISABLE` env var → not set
-   - Asks the rule resolver: which rule matches this command? → `pkg-install`
-   - Applies rewrite step from the rule → command becomes `pnpm install --frozen-lockfile --reporter=silent`
-   - Returns the rewritten command to Claude Code
-3. Claude Code executes the (possibly rewritten) command.
-4. `PostToolUse` hook fires with stdout, stderr, exit code, duration.
-5. The adapter passes everything to the core's `process()` function:
-   - Pipeline runner streams the output through the rule's stages
-   - On non-zero exit, swaps to `on_error` pipeline
-   - Optionally runs `post_process` Starlark
-   - Applies `max_bytes` cap as final stage
-6. Tracker writes a row to `invocations`. If raw output retention is enabled, writes the original stdout/stderr to `raw_outputs`.
-7. Filtered output is returned to Claude Code, which puts it in the model's context.
+   - Checks for `!!` prefix → not present, continue.
+   - Checks `LACON_DISABLE` env var → not set.
+   - Asks the rule resolver: which rule matches? → `pkg-install`.
+   - Applies the rule's `rewrite` block → inner argv becomes `pnpm install --frozen-lockfile --reporter=silent`.
+   - Wraps as `lacon run --rule pkg-install -- pnpm install --frozen-lockfile --reporter=silent`.
+   - Returns `hookSpecificOutput.updatedInput` with the rewritten command.
+3. Claude Code executes the rewritten command.
+4. `lacon run` spawns `pnpm install ...` as a subprocess, with stderr redirected into stdout.
+5. The pipeline runner streams the merged output through the rule's stages — `strip_ansi`, `drop_regex`, `dedupe`, etc. — into a bounded buffer.
+6. The subprocess exits. `lacon run` reads the exit code:
+   - On zero: flushes the success pipeline's output, optionally runs `post_process` Starlark, applies `max_bytes` cap, writes filtered bytes to stdout.
+   - On non-zero: discards the success buffer, runs the buffered raw output through the `on_error` pipeline, then flushes that.
+7. `lacon run` writes a row to `invocations` (and, if raw-output retention is enabled, to `raw_outputs`), then exits with the subprocess's exit code.
+8. Claude Code captures `lacon run`'s stdout as the tool result and its exit code for the `PostToolUseFailure` event (if non-zero). The model sees only the filtered output.
 
 ## Configuration loading
 

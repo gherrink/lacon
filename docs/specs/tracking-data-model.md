@@ -155,18 +155,31 @@ Pruning runs on `lacon` startup: a single `DELETE FROM ... WHERE created_ts < ?`
 
 ## Privacy
 
-- Database directory permissions: `0700`
-- `raw_outputs` storage is **off** by default. Opt-in per project in `.lacon/config.yaml`:
+The v1 privacy contract for `raw_outputs`:
+
+- **Off by default.** Storage is opt-in per project in `.lacon/config.yaml`:
 
   ```yaml
   store_raw_outputs: true
   ```
 
-- A `lacon purge` command deletes:
-  - `lacon purge raw` — all raw outputs
-  - `lacon purge --since=2024-01-01` — invocations and outputs older than a date
-  - `lacon purge --project=<path>` — everything for a project
-- No telemetry, no remote sync, no network access.
+- **Directory permissions: `0700`.** The DB directory and its contents are user-only-readable. Enforced at DB initialization.
+
+- **Opt-in warning.** The first time `lacon` runs against a project config where `store_raw_outputs` flips from off to on, it prints a one-time stderr notice explaining what will be retained, where, and for how long. Suppressed on subsequent invocations via a marker in the project config dir.
+
+- **No automatic redaction.** Captured output is stored byte-for-byte. Users opting in are responsible for what their commands print. Pattern-based secret redaction would be best-effort heuristic — false negatives leak secrets while false positives drop legitimate output, and the feature claim creates downstream incident risk. Listed as a [backlog](../backlog.md) candidate.
+
+- **Manual cleanup.** v1 ships no dedicated `lacon purge` command. Users clear retained data by:
+  - Removing the DB file: `rm ~/.local/share/lacon/history.db`
+  - Or selectively via `sqlite3`:
+
+    ```bash
+    sqlite3 ~/.local/share/lacon/history.db "DELETE FROM raw_outputs;"
+    ```
+
+  A `lacon purge` subcommand with date/project/scope filtering is a [backlog](../backlog.md) candidate.
+
+- **No telemetry, no remote sync, no network access.**
 
 ## Migration policy
 
@@ -174,7 +187,7 @@ Schema changes ship as numbered migrations applied automatically at startup. Mig
 
 ## What's deliberately not in this schema (yet)
 
-- Token counts (we store bytes; tokens require a tokenizer choice — see [open-questions](../open-questions.md))
+- Token counts (we store bytes; tokens require a tokenizer choice — deferred to v2, see [backlog → Per-token accounting](../backlog.md))
 - Cost estimates (depends on token counts)
 - Cross-machine sync state
 - User authentication (irrelevant for local-only)

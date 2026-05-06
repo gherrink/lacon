@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Design phase. No code yet.** There is no `Cargo.toml`, no source tree, no build, lint, or test commands. The repository contains only the README, LICENSE, and `docs/`. Do not invent build commands or pretend a tool chain exists — when implementation starts, the planned crate layout is in `docs/architecture.md` (`crates/lacon-core`, `crates/lacon-cli`, `crates/lacon-adapter-claudecode`, `bundled-rules/`, `tests/`).
 
-The design is intentionally locked down ahead of implementation via 12 ADRs in `docs/decisions/`. Treat those ADRs as the source of truth — if a proposed change contradicts one, surface that explicitly rather than silently working around it.
+The design is intentionally locked down ahead of implementation via 13 ADRs in `docs/decisions/`. Treat those ADRs as the source of truth — if a proposed change contradicts one, surface that explicitly rather than silently working around it.
 
 ## What `lacon` is
 
@@ -14,9 +14,9 @@ A Rust CLI that integrates with coding-assistant hook systems (Claude Code first
 
 The big picture in `docs/architecture.md`:
 
-- **Adapter** (per assistant) → **Rule resolver** → **Pipeline runner** (streaming) → **Tracker** (SQLite). The core engine is assistant-agnostic; adapters are dumb translators.
-- A `PreToolUse` hook can rewrite the command before execution (`rewrite.add_flags` etc.); a `PostToolUse` hook filters the resulting output through a rule's pipeline.
-- `on_error` *replaces* the success pipeline on non-zero exit; it does not merge.
+- **Adapter** (per assistant) → **`lacon run` wrapper** → **Rule resolver** → **Pipeline runner** (streaming) → **Tracker** (SQLite). The core engine is assistant-agnostic; adapters are dumb translators that rewrite commands.
+- The Claude Code `PreToolUse` hook does both jobs: applies the rule's `rewrite` block (flag add/remove) and, for matched commands, wraps the result as `lacon run --rule <id> -- <cmd>`. Filtering happens inside `lacon run`, which spawns the subprocess, merges stderr into stdout, and writes filtered bytes to its own stdout — that's what Claude Code captures as the tool result. There is **no `PostToolUse` hook** in v1: empirical testing on 2026-05-05 showed `PostToolUse` cannot replace tool output (only `additionalContext` reaches the model, additively). See [ADR 0013](docs/decisions/0013-filter-via-pretooluse-wrapper.md).
+- `on_error` *replaces* the success pipeline on non-zero exit; it does not merge. Implemented as an internal mode of `lacon run`, switched on the subprocess's observed exit code.
 
 ## Load-bearing design constraints
 
@@ -34,13 +34,14 @@ These come from ADRs and need to hold across any implementation work:
 
 - `docs/specs/filter-rule-schema.md` — YAML rule format. Any change here is a breaking change for users. Lists every native primitive (`strip_ansi`, `drop_regex`, `keep_regex`, `replace_regex`, `dedupe`, `collapse_repeated`, `keep_head`, `keep_tail`, `keep_around_match`, `max_bytes`) and the Starlark `script` / `post_process` shape (`def process(ctx, lines) -> list[str]`).
 - `docs/specs/tracking-data-model.md` — full SQLite schema, indexes, views (`v_unmatched_offenders`, `v_filtered_offenders`, `v_bypass_rate`, `v_project_savings`), retention policies, and the `0700` directory permission requirement.
+- `docs/specs/chained-commands.md` — splitting rules for `&&` / `||` / `;`, per-segment rule resolution, exit-code propagation, and the v1 whole-chain bypass when any segment looks interactive. Granular per-segment TUI bypass is a v2 backlog item.
 
 ## v1 scope boundary (`docs/v1-scope.md`)
 
-In: streaming engine + 10 native primitives + Starlark `post_process`, Claude Code adapter only, six CLI commands (`init`, `run`, `stats`, `explain`, `doctor`, `validate`), top-level chained-command splitting on `&&` / `||` / `;`, ten bundled rules (Tier 1 in `docs/bundled-rules-roadmap.md`), macOS + Linux.
+In: streaming engine + 10 native primitives + Starlark `post_process`, Claude Code adapter only (`PreToolUse` hook that rewrites matched commands to `lacon run --rule <id> -- <cmd>`), six CLI commands (`init`, `run`, `stats`, `explain`, `doctor`, `validate`) — note `run` is now both the production wrapper and the manual-debug entry, top-level chained-command splitting on `&&` / `||` / `;`, ten bundled rules (Tier 1 in `docs/bundled-rules-roadmap.md`), macOS + Linux.
 
 Out: other adapters, per-line streaming Starlark, filtering inside pipes, native Windows, public rule registry, token-based accounting. Many of these are explicitly listed in `docs/backlog.md` — if a request matches one, point at the backlog rather than building it as a side quest.
 
 ## Open questions to be aware of
 
-`docs/open-questions.md` flags risks that could change the design — the most load-bearing is whether Claude Code's hooks can actually (a) modify the command pre-exec and (b) modify the output the model sees. The `rewrite` feature and the entire filtering approach depend on those. Verify against live Claude Code behavior before committing to implementation details that assume them.
+`docs/open-questions.md` flags risks that could change the design. All previously-open questions are resolved as of 2026-05-06. Resolutions: hook mechanics (2026-05-05, see ADR 0013 — `PreToolUse` can rewrite commands but `PostToolUse` cannot replace output, so filtering moved into the `lacon run` wrapper); Starlark performance (no daemon in v1 regardless of benchmark, optimize in-process if needed, revisit in v2 with data); chained-command behavior (full semantics in `docs/specs/chained-commands.md`, including whole-chain bypass when any segment is interactive); coverage boundary (what `lacon` can and can't see is documented in `docs/v1-scope.md#coverage-boundary`); tokenizer choice (schema is already byte-named and forward-compatible, tokenizer pick deferred to v2 in `docs/backlog.md` "Per-token accounting"); raw-output privacy (v1 contract is off-by-default + `0700` + opt-in stderr warning + no redaction + manual cleanup, full details in `docs/specs/tracking-data-model.md#privacy`; `lacon purge` and redaction patterns deferred to backlog); fixture-based rule testing (strategy in `docs/testing-rules.md` — captured-output fixtures per bundled rule, hermetic CI, manual regeneration via `scripts/capture-fixtures.sh`). When a new design risk surfaces, add it to `docs/open-questions.md` rather than amending this paragraph.
