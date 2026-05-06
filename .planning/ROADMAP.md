@@ -10,7 +10,7 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
 - Integer phases (1, 2, 3, 4, 5, 6): planned milestone work for v1.
 - Decimal phases (e.g., 2.1): reserved for urgent insertions post-planning via `/gsd-insert-phase`. None at creation time.
 
-- [ ] **Phase 1: Engine core & `lacon run` wrapper** - Streaming pipeline + Starlark `post_process` + rule loader + the production wrapper that runs every filter
+- [x] **Phase 1: Engine core & `lacon run` wrapper** - Streaming pipeline + Starlark `post_process` + rule loader + the production wrapper that runs every filter (completed 2026-05-06)
 - [ ] **Phase 2: Local tracking** - SQLite history at `~/.local/share/lacon/history.db` with privacy contract, retention, and the four required views
 - [ ] **Phase 3: Claude Code adapter & `lacon init`** - `PreToolUse` hook with chained-command splitting, TUI bypass, bypass detection, and one-shot project setup
 - [ ] **Phase 4: CLI completion (`stats`, `explain`, `doctor`)** - Introspection commands backed by tracking data plus the six-command surface cap
@@ -36,7 +36,7 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
 - [x] 01-04-PLAN.md — Starlark post_process host (hermetic) + Pipeline integration
 - [x] 01-05-PLAN.md — lacon run runtime: subprocess merge, dual-buffer, on_error swap, bypass, signal forwarding
 - [x] 01-06-PLAN.md — CLI surface: clap derive, lacon run + lacon validate wiring, 6-command cap
-- [ ] 01-07-PLAN.md — End-to-end integration tests + cold-start probe + benchmark findings
+- [x] 01-07-PLAN.md — End-to-end integration tests + cold-start probe + benchmark findings
 
 **Implementation-time decisions to settle in this phase** (deferred-to-prototyping per `docs/open-questions.md`):
 - **Q-deferred-signal-forwarding**: When Claude Code's Bash tool times out or the user interrupts, what does `lacon run` do? Likely answer: SIGTERM forward + immediate exit for v1, no drain. Settle the first time `lacon run` actually handles a signal in integration testing.
@@ -107,7 +107,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 5 (bundl
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Engine core & `lacon run` wrapper | 5/7 | In Progress|  |
+| 1. Engine core & `lacon run` wrapper | 7/7 | Complete   | 2026-05-06 |
 | 2. Local tracking | 0/TBD | Not started | - |
 | 3. Claude Code adapter & `lacon init` | 0/TBD | Not started | - |
 | 4. CLI completion (`stats`, `explain`, `doctor`) | 0/TBD | Not started | - |
