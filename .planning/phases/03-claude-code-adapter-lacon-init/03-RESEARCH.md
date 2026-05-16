@@ -1347,27 +1347,31 @@ fn build_rewritten_chain(segments: Vec<Segment>) -> String {
 | A4 | Promoting the matcher logic from `lacon-cli::commands::run::try_match_via_load_all` to `lacon-core::rules::matcher` is a small additive change | Common Operation 2 + planner note | Medium — if the matcher logic has CLI-specific behavior (error formatting, cwd handling), the promotion requires more care. Planner: read `crates/lacon-cli/src/commands/run.rs` before scheduling. |
 | A5 | `serde_json` version 1.0.149 is appropriate; aligns with serde 1.x | Standard Stack | Low — `serde_json` follows serde's compatibility guarantees; any 1.x version works |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should `lacon init` validate that `lacon-claude-hook` is on PATH before writing settings.json?**
    - What we know: D-domain says `.claude/settings.json` uses command `"lacon-claude-hook"` (bare name, no path). Users installing via `cargo install` get binaries in `~/.cargo/bin/` which must be on PATH for the hook to fire.
    - What's unclear: Should `lacon init` `command -v lacon-claude-hook` and warn if missing?
    - Recommendation: Add a warning (not a failure) — print to stderr "warning: `lacon-claude-hook` not found on PATH; Claude Code hooks may fail to fire until you install/symlink it". Pure Claude's discretion (CONTEXT doesn't require this); recommend including in P5 as a small UX polish.
+   - **RESOLVED 2026-05-16 (Phase 3 planning):** DEFER to Phase 4 `lacon doctor`. Rationale: `lacon doctor` is the dedicated check command for environment validation; `lacon init` should remain fast and side-effect-focused, not a preflight checker. Phase 4 will own the PATH check. Plan 5 (`lacon init`) MUST NOT shell out to `command -v` or otherwise probe PATH.
 
 2. **Should `lacon init` accept `--force` to overwrite a corrupt CLAUDE.md marker block?**
    - What we know: D-14 specifies detect-and-replace; the corrupt-state branch (one marker only) appends fresh + logs warning.
    - What's unclear: Some users may want to force overwrite without warnings.
    - Recommendation: Defer — CONTEXT doesn't require it. v1.5 polish if user demand emerges.
+   - **RESOLVED 2026-05-16 (Phase 3 planning):** DEFER to v1.5+. Rationale: the walk-and-rewrite algorithm (D-12 settings.json prefix detection + D-28 CLAUDE.md marker scan) is already content-stable on idempotent re-runs; users with corrupt state can manually edit. No current use-case justifies adding a `--force` flag. Plan 5 MUST NOT define a `--force` CLI argument.
 
 3. **Should the env-var prefix (D-26) include `LACON_TOOL_USE_ID`?**
    - What we know: D-26 lists it as Claude's discretion. Phase 2's tracker schema has columns for `assistant` and `session_id` but not `tool_use_id`.
    - What's unclear: Does Phase 4's `lacon explain` benefit from `tool_use_id` correlation enough to justify a new column? Phase 4 hasn't been planned yet.
    - Recommendation: Include `LACON_TOOL_USE_ID` in the prefix from Phase 3 (cheap — one extra env-var per invocation). If Phase 4 doesn't add a column, the env-var is silently unused. If Phase 4 DOES add a column, the data is already there from day 1.
+   - **RESOLVED 2026-05-16 (Phase 3 planning):** IMPLEMENT. Rationale: a single extra env-var per invocation is cheap (≤80 bytes added to the rewritten command), and it enables Phase 4 `lacon explain` to cross-correlate with Claude Code's tool history more strongly than `session_id + ts` alone. The env-var is silently unused by Phase 2's tracker until Phase 4 (or v1.5) adds a `tool_use_id` column. Plan 4 Task 1's wrap form is therefore: `LACON_ASSISTANT=claude-code LACON_SESSION_ID=<id> LACON_TOOL_USE_ID=<id> lacon run --rule <id> -- <quoted argv>`. A hook_e2e assertion locks the `LACON_TOOL_USE_ID=` substring presence.
 
 4. **Does Phase 3 need to handle non-Bash tool_name in the hook?**
    - What we know: The hook is registered under `matcher: "Bash"` in settings.json. Claude Code SHOULD only invoke our hook for Bash tools.
    - What's unclear: If the matcher is somehow widened (user edits settings.json), how should we behave?
    - Recommendation: Defensive: if `input.tool_name != "Bash"`, pass-through (exit 0, no JSON emit). Two lines of code; prevents weird future failures.
+   - **RESOLVED 2026-05-16 (Phase 3 planning):** IMPLEMENT. Rationale: ~2 LOC for a future-proofing guard against Claude Code widening the `settings.json` matcher schema (which currently is set to `"Bash"` by lacon's `init`, but a user could manually register the hook under a non-Bash matcher). Plan 4 Task 1 orchestration step 0: if `input.tool_name != "Bash"`, return `Ok(HookOutcome::PassThrough)` (empty stdout, exit 0). A hook_e2e test `non_bash_tool_passes_through` feeds a fixture with `tool_name: "Write"` and asserts empty stdout + exit 0.
 
 ## Environment Availability
 
