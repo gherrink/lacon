@@ -69,7 +69,12 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
   2. The hook resolves rules per segment, applies `rewrite` (idempotent `add_flags`) to inner argv, and emits `hookSpecificOutput.updatedInput` with matched commands wrapped as `lacon run --rule <id> -- <seg>` while unchanged Bash tool fields (`description`, `timeout`, `run_in_background`) are echoed back unmodified.
   3. The chain splitter correctly handles all 13 scenarios in `docs/specs/chained-commands.md` — single command, two-segment chains per operator, mixed operators, mixed match/unmatched, subshell opacity, command-substitution opacity, quoted-string opacity, pipeline-as-segment, heredoc opacity, `!!` whole-chain bypass, `LACON_DISABLE=1` whole-chain bypass — verified by integration tests.
   4. The TUI heuristic (hardcoded list per `docs/specs/chained-commands.md`) runs per-segment AFTER chain splitting and BEFORE rule resolution; any matching segment causes the entire input to be returned unchanged. Pure-TUI basenames and the conditional patterns (`git rebase -i`, `git commit` w/o `-m`/`-F`, REPLs without positional args, etc.) are all covered by tests.
-**Plans**: TBD
+**Plans**: 5 plans
+- [ ] 03-01-PLAN.md — Crate scaffolding: serde_json workspace dep + lacon-claude-hook bin target + typed protocol structs + match_argv_via_load_all promoted to lacon-core
+- [ ] 03-02-PLAN.md — Chain splitter DFA in chain.rs + 13-scenario test matrix + 2 pathological-input tests
+- [ ] 03-03-PLAN.md — TUI heuristic (tui.rs, 30-row table) + apply_rewrite (lacon-core::rules::rewrite, 10 idempotency tests) + quote_for_shell (quote.rs, 11 POSIX round-trip tests)
+- [ ] 03-04-PLAN.md — run_hook orchestration in lib.rs + bin/hook.rs response emit + hook_e2e (9 tests covering all 5 adapter REQs + Phase 2 env-var contract) + cold_start.rs hook scenarios
+- [ ] 03-05-PLAN.md — lacon init: settings.json walker + CLAUDE.md marker block + .lacon skeleton + 4 cli_init tests (create/idempotent/preserve-user-hooks/drop-old-lacon-entries)
 
 **Implementation-time decision to settle in this phase** (deferred-to-prototyping per `docs/open-questions.md`):
 - **Q-deferred-init-idempotency**: What happens if `lacon init` runs in a project where the hook is already installed? Likely answer: detect existing block via marker comment (e.g. `// lacon:hook`), replace block contents in place, leave other settings.json keys alone — idempotent re-runs become a no-op when the block matches the current desired state. Settle during the first integration test pass for `lacon init`.
@@ -116,7 +121,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 5 (bundl
 |-------|----------------|--------|-----------|
 | 1. Engine core & `lacon run` wrapper | 8/8 | Complete   | 2026-05-06 |
 | 2. Local tracking | 4/6 | In Progress|  |
-| 3. Claude Code adapter & `lacon init` | 0/TBD | Not started | - |
+| 3. Claude Code adapter & `lacon init` | 0/5 | Not started | - |
 | 4. CLI completion (`stats`, `explain`, `doctor`) | 0/TBD | Not started | - |
 | 5. Bundled Tier 1 rules | 0/TBD | Not started | - |
 | 6. v1 ship gate — acceptance & docs | 0/TBD | Not started | - |
