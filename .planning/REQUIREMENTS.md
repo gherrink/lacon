@@ -38,8 +38,8 @@ Requirements for the v1 release. Each maps to exactly one phase in `.planning/RO
 
 - [x] **REQ-cli-init**: `lacon init` sets up `.lacon/` in the current project, configures the Claude Code `PreToolUse` hook in `.claude/settings.json`, adds a tiny CLAUDE.md instruction line.
 - [x] **REQ-cli-run**: `lacon run [--rule <id>] -- <cmd> [args...]` is the production wrapper invoked by the `PreToolUse` rewrite. Spawns the subprocess, merges stdout+stderr, filters, propagates the subprocess's exit code. Without `--rule`, runs the resolver inline against `<cmd>` for manual testing. (ADR-0013.)
-- [ ] **REQ-cli-stats**: `lacon stats` shows top offenders, bypass rates, unmatched commands; supports `--project`, `--since`, `--rule` filters.
-- [ ] **REQ-cli-explain**: `lacon explain <id>` re-runs filtering against stored raw output and shows side-by-side diff. Requires raw retention to have been enabled at the time of the invocation.
+- [x] **REQ-cli-stats**: `lacon stats` shows top offenders, bypass rates, unmatched commands; supports `--project`, `--since`, `--rule` filters.
+- [x] **REQ-cli-explain**: `lacon explain <id>` re-runs filtering against stored raw output and shows side-by-side diff. Requires raw retention to have been enabled at the time of the invocation.
 - [ ] **REQ-cli-doctor**: `lacon doctor` verifies hooks are installed, config files are valid, rules parse. Runs config validation on every layer's `config.yaml` in addition to its rule sweep.
 - [x] **REQ-cli-validate**: `lacon validate <path>` lints a rule file or a `config.yaml` without running it. Dispatcher detects file type by content (`id` + `match` → rule; otherwise config). Files that fail validation are rejected at load time; `lacon` does NOT silently fall back to defaults on malformed config.
 - [ ] **REQ-cli-surface-cap**: v1 ships exactly six CLI commands (`init`, `run`, `stats`, `explain`, `doctor`, `validate`). No `lacon purge`, no `lacon install`, no `lacon stats --serve` — those are backlog. CLI parser rejects any seventh subcommand attempt.
@@ -190,8 +190,8 @@ Phase mappings populated during ROADMAP creation. 36/36 v1 requirements mapped, 
 | REQ-adapter-tui-bypass | Phase 3 | Complete |
 | REQ-adapter-pipes-passthrough | Phase 3 | Complete |
 | REQ-cli-init | Phase 3 | Complete |
-| REQ-cli-stats | Phase 4 | Pending |
-| REQ-cli-explain | Phase 4 | Pending |
+| REQ-cli-stats | Phase 4 | Complete |
+| REQ-cli-explain | Phase 4 | Complete |
 | REQ-cli-doctor | Phase 4 | Pending |
 | REQ-cli-surface-cap | Phase 4 | Pending |
 | REQ-bundled-rules-tier1 | Phase 5 | Pending |

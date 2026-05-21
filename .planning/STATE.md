@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 4 context gathered (assumptions mode)
-last_updated: "2026-05-21T21:59:49.381Z"
-last_activity: 2026-05-21 -- Phase 04 execution started
+last_updated: "2026-05-21T22:07:12.776Z"
+last_activity: 2026-05-21
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 23
-  completed_plans: 19
+  completed_plans: 20
   percent: 50
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Phase: 04 (CLI completion (stats, explain, doctor)) — EXECUTING
-Plan: 1 of 4
-Status: Executing Phase 04
-Last activity: 2026-05-21 -- Phase 04 execution started
+Plan: 2 of 4
+Status: Ready to execute
+Last activity: 2026-05-21
 
-Progress: [██████████] 100%
+Progress: [█████████░] 87%
 
 ## Performance Metrics
 
@@ -69,6 +69,7 @@ Progress: [██████████] 100%
 | Phase 03 P03 | 3min | 3 tasks | 6 files |
 | Phase 03 P04 | 7min | 3 tasks | 5 files |
 | Phase 03 P05 | 2min | 2 tasks | 3 files |
+| Phase 04 P01 | 9min | 4 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -130,6 +131,8 @@ Full decision log lives in PROJECT.md "Key Decisions" (13 LOCKED ADRs). Recent d
 - [Phase 03]: PLAN-04: bin/hook.rs unchanged (Plan 1 Task 3 already shipped JSON emit); ENV_LOCK Mutex serializes LACON_DISABLE unit tests, no serial_test dep
 - [Phase ?]: [Phase 03 PLAN-05]: lacon init walks .claude/settings.json via serde_json::Value scrub-then-reinsert (D-12/D-28); command-string fingerprint starts_with('lacon-claude-hook'); idempotent + preserves user hooks/top-level keys; atomic write via tempfile::NamedTempFile::persist (D-13)
 - [Phase ?]: [Phase 03 PLAN-05]: CLAUDE.md note via HTML-comment markers <!-- lacon:start/end --> detect-and-replace (D-14); orphan/corrupt marker => append fresh + warn (never destroy user content); non-object settings.json => refuse Ok(1); REQ-cli-init closed, Phase 3 complete
+- [Phase ?]: [Phase 04 PLAN-01]: Wave-0 spike confirmed strict SQLITE_OPEN_READ_ONLY reads a WAL history.db on this build (rusqlite 0.39/libsqlite3-sys 0.37, ext4) — open_readonly uses READ_ONLY, D-02 fallback not needed
+- [Phase ?]: [Phase 04 PLAN-01]: tracking::query is the read API (D-01) — 4 view readers + 4 D-09 base-table filtered re-queries (params!/?N, no value interpolation T-04-01) + fetch_invocation/fetch_raw_output for explain; lacon-cli keeps rusqlite dev-only
 
 ### Pending Todos
 
@@ -154,6 +157,6 @@ None blocking. Three deferred-to-prototyping open questions assigned to phases a
 
 ## Session Continuity
 
-Last session: 2026-05-21T20:47:20.434Z
+Last session: 2026-05-21T22:06:55.692Z
 Stopped at: Phase 4 context gathered (assumptions mode)
-Resume file: .planning/phases/04-cli-completion-stats-explain-doctor/04-CONTEXT.md
+Resume file: None
