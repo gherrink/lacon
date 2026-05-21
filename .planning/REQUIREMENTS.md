@@ -20,7 +20,7 @@ Requirements for the v1 release. Each maps to exactly one phase in `.planning/RO
 
 ### Claude Code adapter
 
-- [ ] **REQ-adapter-pretooluse-only**: Adapter installs ONLY a `PreToolUse` hook for the Bash tool. No `PostToolUse` hook in v1. Hook resolves rule, applies `rewrite` block to inner argv, wraps matched commands as `lacon run --rule <id> -- <inner-cmd>` via `hookSpecificOutput.updatedInput`. Unmatched commands returned unchanged. (ADR-0013.)
+- [x] **REQ-adapter-pretooluse-only**: Adapter installs ONLY a `PreToolUse` hook for the Bash tool. No `PostToolUse` hook in v1. Hook resolves rule, applies `rewrite` block to inner argv, wraps matched commands as `lacon run --rule <id> -- <inner-cmd>` via `hookSpecificOutput.updatedInput`. Unmatched commands returned unchanged. (ADR-0013.)
 - [ ] **REQ-adapter-bypass-detection**: Hook detects `!!` prefix and `LACON_DISABLE=1` env var; on detection bypasses by returning the original command unchanged.
 - [ ] **REQ-adapter-chained-commands**: Adapter splits chained commands at top-level `&&`, `||`, `;` (NOT at `|`, NOT inside quotes/subshells/command-substitution/heredocs) and wraps each matched segment independently. Unmatched segments pass through unchanged. Original operators preserved when reassembling. Splitter must satisfy the 13-scenario test matrix in `docs/specs/chained-commands.md`.
 - [ ] **REQ-adapter-tui-bypass**: TUI heuristic `is_tui(command, args) -> bool` runs per-segment AFTER chain splitting and BEFORE rule resolution. If any segment matches, the entire chain is bypassed (v1 conservative). Hardcoded list lives in adapter code (not user config). v1 list per `docs/specs/chained-commands.md`.
@@ -184,7 +184,7 @@ Phase mappings populated during ROADMAP creation. 36/36 v1 requirements mapped, 
 | REQ-tracking-raw-outputs-default-off | Phase 2 | Complete |
 | REQ-tracking-privacy-warning | Phase 2 | Complete |
 | REQ-tracking-retention-defaults | Phase 2 | Complete |
-| REQ-adapter-pretooluse-only | Phase 3 | Pending |
+| REQ-adapter-pretooluse-only | Phase 3 | Complete |
 | REQ-adapter-bypass-detection | Phase 3 | Pending |
 | REQ-adapter-chained-commands | Phase 3 | Pending |
 | REQ-adapter-tui-bypass | Phase 3 | Pending |

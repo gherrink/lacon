@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 3 context gathered (assumptions mode)
-last_updated: "2026-05-16T07:08:40.233Z"
-last_activity: 2026-05-16 -- Phase 3 planning complete
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-05-21T19:15:17.957Z"
+last_activity: 2026-05-21
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 19
-  completed_plans: 14
-  percent: 74
+  completed_plans: 15
+  percent: 33
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-06)
 
 **Core value:** Reduce the bytes an AI coding assistant ingests from bash output by 30–70% without dropping signal — locally, with sub-10ms cold start, and a YAML rule per command.
-**Current focus:** Phase 02 — Local tracking
+**Current focus:** Phase 03 — claude-code-adapter-lacon-init
 
 ## Current Position
 
-Phase: 02 (Local tracking) — EXECUTING
-Plan: 6 of 6
+Phase: 03 (claude-code-adapter-lacon-init) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-05-16 -- Phase 3 planning complete
+Last activity: 2026-05-21
 
-Progress: [██████████] 100%
+Progress: [████████░░] 79%
 
 ## Performance Metrics
 
@@ -64,6 +64,7 @@ Progress: [██████████] 100%
 | Phase 02-local-tracking P04 | 12min | 3 tasks | 4 files |
 | Phase 02-local-tracking PP05 | 12min | 3 tasks | 4 files |
 | Phase 02-local-tracking P06 | 24min | 3 tasks | 8 files |
+| Phase 03 P01 | 5min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -111,6 +112,10 @@ Full decision log lives in PROJECT.md "Key Decisions" (13 LOCKED ADRs). Recent d
 - [Phase ?]: [Phase 02-local-tracking PLAN-06]: Privacy warning gate widened in Tracker::record (Rule 2 deviation) — fires on cfg.store_raw_outputs alone, not gated on raw_opt.is_some(); SC2 reachable end-to-end via CLI per Issue #9
 - [Phase ?]: [Phase 02-local-tracking PLAN-06]: Criterion bench gate at Tracker::open boundary (BUDGET_MICROS=3_700) is REAL (Issue #3 Option A) — gate trips on this hardware (criterion median 25020us vs 3700us target). Dominant cost is ext4 fsync at migration COMMIT. Phase 6 follow-up: re-measure on tmpfs and split first-ever vs steady-state Tracker::open.
 - [Phase ?]: [Phase 02-local-tracking PLAN-06]: D-04 lazy-open invariant locked by 5 tests in tracking_coldstart.rs — 3 runtime negative tests + 2 source-grep invariants using env!(CARGO_MANIFEST_DIR) per Issue #7
+- [Phase ?]: [Phase 03 PLAN-01]: serde_json pinned 1.0.149 in [workspace.dependencies]; adapter inherits via { workspace = true }; Plan 05 lacon-cli also inherits
+- [Phase ?]: [Phase 03 PLAN-01]: adapter dep set locked to lacon-core + serde + serde_json + anyhow (D-02 cold-start); grep gate forbids rusqlite/starlark/os_pipe/regex/etcetera/signal-hook/nix
+- [Phase ?]: [Phase 03 PLAN-01]: HookInput omits deny_unknown_fields (CC may add fields); BashToolInput skip_serializing_if=Option::is_none so updatedInput never injects null (D-03 echo-back)
+- [Phase ?]: [Phase 03 PLAN-01]: rule matcher promoted to lacon_core::rules::match_argv_via_load_all; empty-argv returns Ok(None); lacon-cli run delegates; cli_run.rs byte-for-byte unchanged
 
 ### Pending Todos
 
@@ -135,6 +140,6 @@ None blocking. Three deferred-to-prototyping open questions assigned to phases a
 
 ## Session Continuity
 
-Last session: 2026-05-16T05:56:39.001Z
-Stopped at: Phase 3 context gathered (assumptions mode)
-Resume file: .planning/phases/03-claude-code-adapter-lacon-init/03-CONTEXT.md
+Last session: 2026-05-21T19:15:06.859Z
+Stopped at: Completed 03-01-PLAN.md
+Resume file: None
