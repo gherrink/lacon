@@ -21,3 +21,7 @@ mask a regression. The new Plan 04-01 files (`tracking/query.rs`, the
 
 Recommended owner: a small Phase 6 (hardening) cleanup pass, or whichever later
 plan next edits these files. Each is a one-line mechanical fix.
+
+**Re-confirmed in Plan 04-02:** the same 4 lints persist (unchanged). Plan 04-02's
+only source change, `crates/lacon-core/src/runtime/mod.rs` (`Runner::filter_bytes`),
+is clippy-clean. No new lints introduced.

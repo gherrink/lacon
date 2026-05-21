@@ -90,7 +90,7 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
   4. Running `lacon <unknown-subcommand>` returns a non-zero exit code with a clap error pointing at the six legitimate subcommands; the binary has no `purge`, `install`, or `stats --serve` paths in its CLI surface.
 **Plans**: 4 plans
 - [x] 04-01-PLAN.md — Tracking read surface: open_readonly helper + tracking::query API + Wave-0 WAL read-only spike
-- [ ] 04-02-PLAN.md — Runner::filter_bytes byte-replay for explain (exit-code branch fidelity)
+- [x] 04-02-PLAN.md — Runner::filter_bytes byte-replay for explain (exit-code branch fidelity)
 - [ ] 04-03-PLAN.md — stats + explain commands + main.rs arg threading + black-box tests
 - [ ] 04-04-PLAN.md — doctor five-check sweep + six-command surface cap hardening
 
@@ -126,6 +126,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 5 (bundl
 | 1. Engine core & `lacon run` wrapper | 8/8 | Complete   | 2026-05-06 |
 | 2. Local tracking | 4/6 | In Progress|  |
 | 3. Claude Code adapter & `lacon init` | 5/5 | Complete   | 2026-05-21 |
-| 4. CLI completion (`stats`, `explain`, `doctor`) | 1/4 | In Progress|  |
+| 4. CLI completion (`stats`, `explain`, `doctor`) | 2/4 | In Progress|  |
 | 5. Bundled Tier 1 rules | 0/TBD | Not started | - |
 | 6. v1 ship gate — acceptance & docs | 0/TBD | Not started | - |
