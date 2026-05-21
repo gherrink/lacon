@@ -518,30 +518,44 @@ pub fn has_top_level_pipe(segment: &str) -> bool {
 /// The orchestrator (lib.rs) resolves rules against `argv_for_resolution`, a
 /// whitespace tokenizer that only models single/double quotes. Anything else —
 /// redirections, command/process substitution, comments, `${...}` expansion,
-/// escaped whitespace — survives tokenization as plain bytes and is then
-/// single-quoted by `quote_for_shell`, which changes the command's runtime
-/// semantics (a redirect is dropped, a substitution is neutralized, a comment
-/// becomes literal args, an escaped space splits one arg into two). The Runner
-/// executes `Command::new(argv[0]).args(...)` with NO shell hop, so there is no
-/// place to faithfully re-emit these constructs. The conservative posture
-/// (matching the existing `has_top_level_pipe` pipe guard and
+/// escaped whitespace, AND every other shell expansion (bare variable `$VAR`,
+/// positional/special `$1`/`$?`/`$@`, tilde `~`, pathname globs `*`/`?`/`[`) —
+/// survives tokenization as plain bytes and is then single-quoted by
+/// `quote_for_shell` (its METACHARS set includes `$ ~ * ? [`, correctly, for
+/// injection-safety), which changes the command's runtime semantics (a redirect
+/// is dropped, a substitution/variable/glob is neutralized, a comment becomes
+/// literal args, an escaped space splits one arg into two). The Runner executes
+/// `Command::new(argv[0]).args(...)` with NO shell hop, so there is no place to
+/// faithfully re-emit ANY of these constructs. The conservative, fail-safe
+/// posture (matching the existing `has_top_level_pipe` pipe guard and
 /// `docs/specs/chained-commands.md:17`) is to leave such a segment untouched so
 /// the shell still sees the real construct.
 ///
-/// Detected at top level (outside quotes / cmd-sub / subshell / backtick /
-/// process-sub / `${...}` / heredoc):
+/// CR-01 (iteration 2): the root cause is wider than the four named iter-1
+/// constructs — `quote_for_shell` neutralizes EVERY shell-expansion metacharacter,
+/// not just the ones with dedicated branches. So this predicate now treats ANY
+/// unquoted shell-expansion metacharacter as unwrappable, not a curated subset.
+///
+/// Detected (outside single quotes — single-quoted bytes are literal and
+/// faithfully reproduced):
 /// - command substitution `$(...)` and backticks `` `...` ``
 /// - process substitution `<(...)` / `>(...)`
 /// - parameter expansion `${...}`
+/// - bare variable / positional / special-param expansion: any `$` not part of
+///   `${`/`$(` (e.g. `$HOME`, `$1`, `$?`, `$@`). Fires even inside double quotes,
+///   because `"$HOME"` still expands in bash but the wrap would single-quote it.
+/// - tilde expansion `~` in word position (start-of-word) at top level
+/// - pathname/glob metacharacters `*` / `?` / `[` at top level
 /// - redirections: any top-level `<` or `>` (covers `>`, `>>`, `<`, `2>`,
 ///   `&>`, `>&`, here-strings `<<<`, heredocs `<<DELIM`)
 /// - a top-level `#` comment (start-of-segment or preceded by whitespace)
 /// - a top-level unescaped backslash (escaped whitespace would re-tokenize wrong)
 ///
-/// Constructs that ARE faithfully reproduced (single/double-quoted words, glued
-/// quotes) do NOT report true. A top-level pipe is reported separately by
-/// [`has_top_level_pipe`]; this predicate deliberately ignores `|` so callers can
-/// keep the two guards independent (and so the existing pipe tests stay valid).
+/// Constructs that ARE faithfully reproduced (single/double-quoted *literal*
+/// words, glued quotes) do NOT report true. A top-level pipe is reported
+/// separately by [`has_top_level_pipe`]; this predicate deliberately ignores `|`
+/// so callers can keep the two guards independent (and so the existing pipe tests
+/// stay valid).
 pub fn has_unwrappable_construct(segment: &str) -> bool {
     let bytes = segment.as_bytes();
     let n = bytes.len();
@@ -620,6 +634,16 @@ pub fn has_unwrappable_construct(segment: &str) -> bool {
             i += 2;
             continue;
         }
+        // CR-01: a bare `$` that is NOT part of `${`/`$(` (handled above) is a
+        // variable / positional / special-param expansion (`$HOME`, `$1`, `$?`,
+        // `$@`). We are already past the `state.in_single_quote` early-continue, so
+        // any `$` reaching here is outside single quotes — bash WILL expand it
+        // (including inside double quotes: `"$HOME"`) and `quote_for_shell` would
+        // single-quote-neutralize it. The wrap form cannot reproduce the
+        // expansion, so the segment must pass through byte-exact.
+        if b == b'$' {
+            return true;
+        }
         if state.param_expansion_depth > 0 {
             if b == b'{' {
                 state.param_expansion_depth += 1;
@@ -670,7 +694,22 @@ pub fn has_unwrappable_construct(segment: &str) -> bool {
         if b == b'#' && state.at_top_level() && prev_was_ws_or_start {
             return true;
         }
-        // Track word-position for the `#` test above.
+        // CR-01: unquoted pathname/glob metacharacters `*` / `?` / `[` at top
+        // level. bash pathname-expands these; `lacon run` (no shell hop) cannot,
+        // and `quote_for_shell` would single-quote them into literals (`ls *.rs`
+        // → `ls '*.rs'`). Pass the segment through byte-exact instead.
+        if (b == b'*' || b == b'?' || b == b'[') && state.at_top_level() {
+            return true;
+        }
+        // CR-01: a leading `~` in word position (start-of-segment or after
+        // whitespace) at top level is tilde expansion (`~`, `~/.config`, `~user`).
+        // bash expands it to a home directory; the wrap form would single-quote it
+        // into the literal `~`. (A `~` mid-token, e.g. `a~b`, is not tilde
+        // expansion, so `prev_was_ws_or_start` gates this correctly.)
+        if b == b'~' && state.at_top_level() && prev_was_ws_or_start {
+            return true;
+        }
+        // Track word-position for the `#` / `~` tests above.
         prev_was_ws_or_start = b == b' ' || b == b'\t' || b == b'\n';
         i += 1;
     }
@@ -924,9 +963,42 @@ mod tests {
         assert!(!has_unwrappable_construct("git commit -m \"msg\""));
         // A `#` glued mid-token is NOT a comment (word position matters).
         assert!(!has_unwrappable_construct("echo a#b"));
-        // A `$` not followed by `{`/`(` is an ordinary literal (e.g. `$var`,
-        // which argv_for_resolution preserves and quote_for_shell quotes safely).
-        assert!(!has_unwrappable_construct("echo $var"));
+    }
+
+    // ── CR-01: every shell expansion quote_for_shell neutralizes is unwrappable ─
+
+    #[test]
+    fn unwrappable_detects_bare_variable_expansion() {
+        // A bare `$` (not `${`/`$(`) is a variable / positional / special-param
+        // expansion. quote_for_shell single-quotes it, so the wrap would print the
+        // literal token instead of the expansion bash performs. Corrected posture:
+        // these are UNwrappable (iter-1 wrongly asserted `echo $var` was wrappable).
+        assert!(has_unwrappable_construct("echo $var"));
+        assert!(has_unwrappable_construct("echo $HOME"));
+        assert!(has_unwrappable_construct("echo $1"));
+        assert!(has_unwrappable_construct("echo $?"));
+        assert!(has_unwrappable_construct("echo $@"));
+        assert!(has_unwrappable_construct("cargo build $FLAGS"));
+        // `$` expands inside double quotes too (`"$HOME"`), so it is unwrappable.
+        assert!(has_unwrappable_construct("echo \"$HOME\""));
+    }
+
+    #[test]
+    fn unwrappable_detects_glob_metacharacters() {
+        assert!(has_unwrappable_construct("ls *.rs"));
+        assert!(has_unwrappable_construct("echo *"));
+        assert!(has_unwrappable_construct("ls file?.txt"));
+        assert!(has_unwrappable_construct("ls [abc].txt"));
+        assert!(has_unwrappable_construct("grep foo src/*"));
+    }
+
+    #[test]
+    fn unwrappable_detects_tilde_expansion() {
+        assert!(has_unwrappable_construct("echo ~"));
+        assert!(has_unwrappable_construct("ls ~/.config"));
+        assert!(has_unwrappable_construct("echo ~user"));
+        // A `~` mid-token is NOT tilde expansion (word position matters).
+        assert!(!has_unwrappable_construct("echo a~b"));
     }
 
     #[test]

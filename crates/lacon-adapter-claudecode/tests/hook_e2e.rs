@@ -364,6 +364,62 @@ fn escaped_whitespace_segment_passes_through_unwrapped() {
     );
 }
 
+/// CR-01 (iteration 2) regression: a matched segment whose only special content
+/// is a BARE variable expansion (`$HOME`, `$1`) MUST pass through byte-exact.
+/// Wrapping single-quotes `$HOME` → `'$HOME'`, so `lacon run` (no shell hop)
+/// would print the literal token instead of the home dir / positional arg the
+/// user intended. (iter-1 wrongly wrapped these.)
+#[test]
+fn bare_variable_expansion_segment_passes_through_unwrapped() {
+    let dir = tempfile::tempdir().unwrap();
+    write_rule(dir.path(), ECHO_RULE); // matches `echo`, but `$VAR` blocks wrap
+    for command in ["echo $HOME", "echo $1"] {
+        let payload = bash_payload(&dir.path().to_string_lossy(), command);
+        let output = run_hook_with_input(&payload);
+        assert!(output.status.success());
+        assert!(
+            output.stdout.is_empty(),
+            "variable-expansion segment {command:?} must not be wrapped, got {:?}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+    }
+}
+
+/// CR-01 (iteration 2) regression: a matched segment containing an unquoted glob
+/// (`*.txt`) MUST pass through byte-exact. Wrapping single-quotes the glob, so
+/// `lacon run` would receive the literal `*.txt` instead of bash's pathname
+/// expansion.
+#[test]
+fn glob_segment_passes_through_unwrapped() {
+    let dir = tempfile::tempdir().unwrap();
+    write_rule(dir.path(), ECHO_RULE);
+    let payload = bash_payload(&dir.path().to_string_lossy(), "echo *.txt");
+    let output = run_hook_with_input(&payload);
+    assert!(output.status.success());
+    assert!(
+        output.stdout.is_empty(),
+        "glob segment must not be wrapped, got {:?}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+/// CR-01 (iteration 2) regression: a matched segment containing a leading tilde
+/// (`~`) MUST pass through byte-exact. Wrapping single-quotes `~`, so `lacon run`
+/// would receive the literal `~` instead of bash's home-directory expansion.
+#[test]
+fn tilde_segment_passes_through_unwrapped() {
+    let dir = tempfile::tempdir().unwrap();
+    write_rule(dir.path(), ECHO_RULE);
+    let payload = bash_payload(&dir.path().to_string_lossy(), "echo ~");
+    let output = run_hook_with_input(&payload);
+    assert!(output.status.success());
+    assert!(
+        output.stdout.is_empty(),
+        "tilde segment must not be wrapped, got {:?}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
 /// CR-01..CR-04 boundary: an unwrappable segment in a chain is preserved
 /// byte-exact while a sibling matched segment is still wrapped — proving the
 /// guard is per-segment, not whole-chain.
