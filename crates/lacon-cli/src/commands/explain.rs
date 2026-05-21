@@ -128,10 +128,20 @@ pub fn execute(id: String) -> anyhow::Result<i32> {
                 extra_env: Default::default(),
             };
             let mut runner = Runner::new(resolved, options);
+            // WR-04: the stored columns are i64 (`INTEGER`); guard the casts so a
+            // tampered/corrupt row cannot silently flip the replayed branch. An
+            // out-of-i32-range exit_code is treated as a FAILURE (nonzero) rather
+            // than truncated — truncation could turn a real nonzero exit into 0
+            // and replay the success pipeline instead of `on_error` (ADR-0010 /
+            // Phase 6 SC3 branch fidelity). Note: this only protects against a
+            // value outside i32; a stored nonzero that still fits i32 already
+            // selects the on_error branch correctly.
+            let exit_code = exit_code_from_stored(row.exit_code);
+            let duration_ms = u64::try_from(row.duration_ms).unwrap_or(0);
             match runner.filter_bytes(
                 &merged,
-                row.exit_code as i32,
-                row.duration_ms as u64,
+                exit_code,
+                duration_ms,
                 &row.command_raw,
                 row.project_path.clone(),
             ) {
@@ -153,6 +163,21 @@ pub fn execute(id: String) -> anyhow::Result<i32> {
     render_side_by_side(&row.command_raw, row.exit_code, &raw_lines, &filtered);
 
     Ok(0)
+}
+
+/// WR-04: convert a DB-stored `i64` exit code to the `i32` the runner expects,
+/// guarding against a tampered/corrupt row. An out-of-`i32`-range value is
+/// treated as a FAILURE (`1`), never truncated — truncation could turn a real
+/// nonzero exit into `0` and replay the success pipeline instead of `on_error`
+/// (ADR-0010 / Phase 6 SC3 branch fidelity). Values that fit `i32` pass through
+/// unchanged, so the zero-vs-nonzero branch selection is preserved exactly.
+fn exit_code_from_stored(stored: i64) -> i32 {
+    i32::try_from(stored).unwrap_or_else(|_| {
+        eprintln!(
+            "lacon explain: stored exit_code {stored} is out of range; treating as failure"
+        );
+        1
+    })
 }
 
 /// Split merged bytes into lines (lossy UTF-8), mirroring `Runner::filter_bytes`.
@@ -210,7 +235,32 @@ fn pad_or_truncate(s: &str, width: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{pad_or_truncate, split_lines};
+    use super::{exit_code_from_stored, pad_or_truncate, split_lines};
+
+    // WR-04: in-range values pass through unchanged so the zero-vs-nonzero
+    // branch selection (success vs on_error) is preserved exactly.
+    #[test]
+    fn exit_code_in_range_passes_through() {
+        assert_eq!(exit_code_from_stored(0), 0);
+        assert_eq!(exit_code_from_stored(1), 1);
+        assert_eq!(exit_code_from_stored(127), 127);
+        assert_eq!(exit_code_from_stored(i32::MAX as i64), i32::MAX);
+        assert_eq!(exit_code_from_stored(i32::MIN as i64), i32::MIN);
+    }
+
+    // WR-04: an out-of-i32-range stored value must be treated as a FAILURE,
+    // never silently truncated. A naive `as i32` cast of (i32::MAX + 1) wraps to
+    // i32::MIN; truncation of 2^32 (= 0x1_0000_0000) would wrap to 0 and flip a
+    // failed run onto the success pipeline. We map it to 1 (nonzero) instead so
+    // the on_error branch is still selected.
+    #[test]
+    fn exit_code_out_of_range_becomes_failure() {
+        assert_eq!(exit_code_from_stored(i32::MAX as i64 + 1), 1);
+        assert_eq!(exit_code_from_stored(i32::MIN as i64 - 1), 1);
+        // 2^32: a naive `as i32` truncation would yield 0 (success); guard -> 1.
+        assert_eq!(exit_code_from_stored(0x1_0000_0000), 1);
+        assert_eq!(exit_code_from_stored(i64::MAX), 1);
+    }
 
     #[test]
     fn pad_short_string_to_width() {
