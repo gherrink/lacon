@@ -83,7 +83,10 @@ fn is_git_interactive(args: &[String]) -> bool {
 }
 
 /// True if a commit message is supplied inline (so `git commit` is NOT
-/// interactive): `-m` / `--message` / `--message=…` / `-F` / `--file`.
+/// interactive): `-m` / `--message` / `--message=…` / `-F` / `--file`, OR a
+/// bundled short-flag form whose letters include `m` (e.g. `-am`, `-vm`) —
+/// `git commit -am "msg"` is an extremely common non-interactive invocation
+/// that the exact-match form misclassified as TUI (WR-01).
 fn has_commit_message(args: &[String]) -> bool {
     args.iter().any(|a| {
         a == "-m"
@@ -91,7 +94,25 @@ fn has_commit_message(args: &[String]) -> bool {
             || a.starts_with("--message=")
             || a == "-F"
             || a == "--file"
+            || is_bundled_short_flag_with_m(a)
     })
+}
+
+/// True if `arg` is a single-dash bundled short-flag cluster containing `m`
+/// (matches `^-[a-zA-Z]*m`): a short cluster like `-am` / `-vm` / `-amend`?
+/// No `--` long flags, no `=` (a `-m`-with-glued-value is `-m` exact-matched
+/// above). The presence of `m` anywhere in a single-dash ASCII-letter cluster
+/// means a `git commit` message is supplied inline.
+fn is_bundled_short_flag_with_m(arg: &str) -> bool {
+    let Some(rest) = arg.strip_prefix('-') else {
+        return false;
+    };
+    // Exclude long flags (`--…`) and any cluster that is not purely ASCII
+    // letters (so `-m=x` / `-1` / numeric fd forms do not match).
+    if rest.starts_with('-') || rest.is_empty() {
+        return false;
+    }
+    rest.bytes().all(|c| c.is_ascii_alphabetic()) && rest.contains('m')
 }
 
 /// `npm`/`yarn`/`pnpm init` is interactive UNLESS `-y` / `--yes` is present.

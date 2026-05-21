@@ -152,6 +152,24 @@ fn git_commit_with_dash_m_false() {
     assert!(!is_tui("git", &s(&["commit", "-m", "msg"])));
 }
 
+// WR-01: bundled short-flag forms carrying `m` supply a message inline.
+#[test]
+fn git_commit_with_dash_am_false() {
+    assert!(!is_tui("git", &s(&["commit", "-am", "msg"])));
+}
+
+#[test]
+fn git_commit_with_dash_vm_false() {
+    assert!(!is_tui("git", &s(&["commit", "-vm", "msg"])));
+}
+
+// A bundled short-flag cluster WITHOUT `m` (e.g. `git commit -a`) still opens
+// the editor → TUI. Guards against the WR-01 fix over-matching.
+#[test]
+fn git_commit_with_dash_a_only_true() {
+    assert!(is_tui("git", &s(&["commit", "-a"])));
+}
+
 // git add -p
 #[test]
 fn git_add_patch_true() {
