@@ -55,10 +55,19 @@ pub fn execute(id: String) -> anyhow::Result<i32> {
             return Ok(1);
         }
     };
-    let row = match query::fetch_invocation(&conn, id_i64)? {
-        Some(r) => r,
-        None => {
+    // WR-02: map SELECT failures to this command's own error channel + a
+    // deliberate exit code, instead of letting a TrackingError::Sqlite escape via
+    // `?` -> anyhow (which would print the internal "tracking: sqlite ..." text
+    // and never reach the chosen exit code). Matches the open-failure handling
+    // above and doctor's blanket-mapped posture (T-04-10).
+    let row = match query::fetch_invocation(&conn, id_i64) {
+        Ok(Some(r)) => r,
+        Ok(None) => {
             eprintln!("lacon explain: no tracked invocations found");
+            return Ok(1);
+        }
+        Err(e) => {
+            eprintln!("lacon explain: query failed: {e}");
             return Ok(1);
         }
     };
@@ -78,13 +87,19 @@ pub fn execute(id: String) -> anyhow::Result<i32> {
     };
 
     // ─── Step 5: load the stored BLOBs and merge (stdout then stderr) ───────
-    let (stdout, stderr) = match query::fetch_raw_output(&conn, raw_output_id)? {
-        Some(blobs) => blobs,
-        None => {
+    let (stdout, stderr) = match query::fetch_raw_output(&conn, raw_output_id) {
+        // WR-02: same posture as fetch_invocation above — a SELECT error maps to
+        // the command's own channel + exit 1, not a raw anyhow propagation.
+        Ok(Some(blobs)) => blobs,
+        Ok(None) => {
             eprintln!(
                 "lacon explain: stored raw output for invocation {id_i64} is no longer \
                  available (it likely aged out of the raw-outputs retention window)."
             );
+            return Ok(1);
+        }
+        Err(e) => {
+            eprintln!("lacon explain: query failed: {e}");
             return Ok(1);
         }
     };

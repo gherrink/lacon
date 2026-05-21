@@ -77,11 +77,22 @@ pub fn execute(project: Option<PathBuf>, since: Option<String>, rule: Option<Str
     };
 
     // ─── Section 1: Unmatched offenders ─────────────────────────────────────
+    // WR-02: map SELECT failures to `lacon stats:` + exit 1 rather than letting a
+    // TrackingError::Sqlite escape via `?` -> anyhow (which prints the internal
+    // "tracking: sqlite ..." text and bypasses the chosen exit code). Matches the
+    // open-failure handling above and doctor's mapped posture (T-04-10).
     println!("Unmatched offenders");
-    let unmatched = if filtered {
-        query::filtered_unmatched_offenders(&conn, cutoff_ms, project_ref)?
+    let unmatched_res = if filtered {
+        query::filtered_unmatched_offenders(&conn, cutoff_ms, project_ref)
     } else {
-        query::unmatched_offenders(&conn)?
+        query::unmatched_offenders(&conn)
+    };
+    let unmatched = match unmatched_res {
+        Ok(rows) => rows,
+        Err(e) => {
+            eprintln!("lacon stats: query failed: {e}");
+            return Ok(1);
+        }
     };
     if unmatched.is_empty() {
         println!("  no data yet");
@@ -97,10 +108,17 @@ pub fn execute(project: Option<PathBuf>, since: Option<String>, rule: Option<Str
 
     // ─── Section 2: Filtered offenders ──────────────────────────────────────
     println!("Filtered offenders");
-    let f_offenders = if filtered {
-        query::filtered_filtered_offenders(&conn, cutoff_ms, project_ref, rule_ref)?
+    let f_offenders_res = if filtered {
+        query::filtered_filtered_offenders(&conn, cutoff_ms, project_ref, rule_ref)
     } else {
-        query::filtered_offenders(&conn)?
+        query::filtered_offenders(&conn)
+    };
+    let f_offenders = match f_offenders_res {
+        Ok(rows) => rows,
+        Err(e) => {
+            eprintln!("lacon stats: query failed: {e}");
+            return Ok(1);
+        }
     };
     if f_offenders.is_empty() {
         println!("  no data yet");
@@ -124,10 +142,17 @@ pub fn execute(project: Option<PathBuf>, since: Option<String>, rule: Option<Str
 
     // ─── Section 3: Bypass rates ────────────────────────────────────────────
     println!("Bypass rates");
-    let bypass = if filtered {
-        query::filtered_bypass_rate(&conn, cutoff_ms, rule_ref)?
+    let bypass_res = if filtered {
+        query::filtered_bypass_rate(&conn, cutoff_ms, rule_ref)
     } else {
-        query::bypass_rate(&conn)?
+        query::bypass_rate(&conn)
+    };
+    let bypass = match bypass_res {
+        Ok(rows) => rows,
+        Err(e) => {
+            eprintln!("lacon stats: query failed: {e}");
+            return Ok(1);
+        }
     };
     if bypass.is_empty() {
         println!("  no data yet");
@@ -146,10 +171,17 @@ pub fn execute(project: Option<PathBuf>, since: Option<String>, rule: Option<Str
 
     // ─── Section 4: Per-project savings ─────────────────────────────────────
     println!("Per-project savings");
-    let savings = if filtered {
-        query::filtered_project_savings(&conn, cutoff_ms, project_ref)?
+    let savings_res = if filtered {
+        query::filtered_project_savings(&conn, cutoff_ms, project_ref)
     } else {
-        query::project_savings(&conn)?
+        query::project_savings(&conn)
+    };
+    let savings = match savings_res {
+        Ok(rows) => rows,
+        Err(e) => {
+            eprintln!("lacon stats: query failed: {e}");
+            return Ok(1);
+        }
     };
     if savings.is_empty() {
         println!("  no data yet");
