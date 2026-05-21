@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-05-21T19:26:34.965Z"
+stopped_at: Completed 03-04-PLAN.md
+last_updated: "2026-05-21T19:36:31.986Z"
 last_activity: 2026-05-21
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 19
-  completed_plans: 17
+  completed_plans: 18
   percent: 33
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Phase: 03 (claude-code-adapter-lacon-init) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-05-21
 
-Progress: [█████████░] 89%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
@@ -67,6 +67,7 @@ Progress: [█████████░] 89%
 | Phase 03 P01 | 5min | 3 tasks | 6 files |
 | Phase 03 P02 | 3min | 2 tasks | 3 files |
 | Phase 03 P03 | 3min | 3 tasks | 6 files |
+| Phase 03 P04 | 7min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -122,6 +123,10 @@ Full decision log lives in PROJECT.md "Key Decisions" (13 LOCKED ADRs). Recent d
 - [Phase ?]: [Phase 03 PLAN-02]: heredoc body opaque via real delimiter-line tracking (<<DELIM/<<-DELIM/quoted); S11 fixture passes without the opaque-until-EOL fallback; <<< here-string is 3-byte opaque token
 - [Phase ?]: [Phase 03 PLAN-03]: is_tui in adapter (D-15), apply_rewrite in lacon-core (D-19); is_repl conservative (python --version = TUI); quote_for_shell single-quote-wrap survives ONE shell parse (D-22), $(rm -rf /) round-trip guard green
 - [Phase ?]: [Phase 03 PLAN-03]: apply_rewrite order remove->replace->add, idempotent apply(apply(x))==apply(x) (T3), argv[0] never touched (T10); add_flags literal-element semantics (T9)
+- [Phase 03]: PLAN-04: run_hook composes Plan 1/2/3 — non-Bash guard + detect_bypass(!!/LACON_DISABLE exact-1) + split_chain + is_tui-before-resolve whole-chain bypass + match_argv_via_load_all + apply_rewrite + quote_for_shell + D-26 prefix (ASSISTANT/SESSION/TOOL_USE) + trailing_op_span byte-exact reassembly; all-unmatched short-circuits PassThrough
+- [Phase 03]: PLAN-04: pipelined matched segments NOT wrapped (Rule 1) — lacon run has no shell hop so a re-quoted | becomes literal arg; chain::has_top_level_pipe gates byte-exact passthrough per chained-commands.md:17
+- [Phase 03]: PLAN-04: hook cold-start passthrough median ~1029us / rewrite ~1146us (Linux) under 2ms/5ms soft targets; probe telemetry-not-gate, Phase 6 owns formal gate
+- [Phase 03]: PLAN-04: bin/hook.rs unchanged (Plan 1 Task 3 already shipped JSON emit); ENV_LOCK Mutex serializes LACON_DISABLE unit tests, no serial_test dep
 
 ### Pending Todos
 
@@ -146,6 +151,6 @@ None blocking. Three deferred-to-prototyping open questions assigned to phases a
 
 ## Session Continuity
 
-Last session: 2026-05-21T19:26:30.791Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-05-21T19:36:31.979Z
+Stopped at: Completed 03-04-PLAN.md
 Resume file: None
