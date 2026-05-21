@@ -15,7 +15,7 @@ fn main() -> anyhow::Result<()> {
         CliCommand::Stats { project, since, rule } => {
             commands::stats::execute(project, since, rule)?
         }
-        CliCommand::Explain { .. } => commands::explain::execute()?,
+        CliCommand::Explain { id } => commands::explain::execute(id)?,
         CliCommand::Doctor => commands::doctor::execute()?,
     };
     std::process::exit(exit_code);
