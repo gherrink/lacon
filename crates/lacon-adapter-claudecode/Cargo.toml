@@ -7,3 +7,15 @@ license.workspace = true
 
 [dependencies]
 lacon-core = { path = "../lacon-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+
+[[bin]]
+name = "lacon-claude-hook"
+path = "src/bin/hook.rs"
+
+[dev-dependencies]
+assert_cmd = { workspace = true }
+predicates = { workspace = true }
+tempfile = { workspace = true }
