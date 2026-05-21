@@ -193,15 +193,26 @@ fn record_invocation(
         .as_ref()
         .map(|d| d.join("config.yaml"))
         .filter(|p| p.exists());
+    // WR-05: `lacon run` is on the hook hot path (spawned for every matched
+    // segment, thousands of times per session) and ADR-0013 budgets ≤10ms cold
+    // start. When neither a project nor a user config file exists — the common
+    // case — skip the YAML parse entirely and use defaults; `load_layered(None,
+    // None)` would otherwise do avoidable startup work. The `Path::exists()`
+    // probes above already gate this cheaply.
+    //
     // load_layered returns Vec<ValidationError> on failure; treat any error as
     // "config invalid; fall back to defaults" — best-effort posture (D-12).
     // Validation errors are emitted earlier by `lacon validate`; here we don't
     // re-surface them to keep stderr quiet on the run path.
-    let cfg: Config = config::load_layered(
-        project_config_path.as_deref(),
-        user_config_path.as_deref(),
-    )
-    .unwrap_or_else(|_| Config::default());
+    let cfg: Config = if project_config_path.is_none() && user_config_path.is_none() {
+        Config::default()
+    } else {
+        config::load_layered(
+            project_config_path.as_deref(),
+            user_config_path.as_deref(),
+        )
+        .unwrap_or_else(|_| Config::default())
+    };
     // ──────────────────────────────────────────────────────────────────────
 
     let meta = InvocationMeta {
