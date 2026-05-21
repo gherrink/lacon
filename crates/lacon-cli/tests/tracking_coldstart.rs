@@ -83,12 +83,19 @@ fn validate_does_not_open_db() {
 
 #[test]
 fn doctor_does_not_open_db() {
+    // Phase 4 (Plan 04-04): doctor is now implemented. On a fresh machine (empty
+    // XDG_DATA_HOME → no history.db) it reports the DB/perms/health checks as
+    // informational (D-03) and exits 0. The load-bearing invariant this test
+    // guards is unchanged: doctor's tracker check opens the DB *read-only*
+    // (open_readonly, D-08) and checks `db_path.exists()` first, so a fresh run
+    // NEVER creates history.db — preserving the D-04 cold-start guarantee.
     let xdg = tempdir().unwrap();
     let mut cmd = Command::cargo_bin("lacon").unwrap();
     cmd.env("XDG_DATA_HOME", xdg.path())
         .env("XDG_CONFIG_HOME", xdg.path().join("config"))
         .args(["doctor"]);
-    cmd.assert().code(2);
+    // Fresh machine: every DB-dependent check is informational, so exit 0.
+    cmd.assert().success();
 
     let db = db_path_under(xdg.path());
     assert!(
