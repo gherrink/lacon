@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
+status: verifying
 stopped_at: "Completed 04-02-PLAN.md (Runner::filter_bytes)"
-last_updated: "2026-05-21T22:19:13.240Z"
+last_updated: "2026-05-21T22:26:03.223Z"
 last_activity: 2026-05-21
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 23
-  completed_plans: 22
-  percent: 50
+  completed_plans: 23
+  percent: 67
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 
 Phase: 04 (CLI completion (stats, explain, doctor)) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-05-21
 
-Progress: [██████████] 96%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -72,6 +72,7 @@ Progress: [██████████] 96%
 | Phase 04 P01 | 9min | 4 tasks | 4 files |
 | Phase 04 P02 | 7min | 2 tasks | 2 files |
 | Phase 04-cli-completion-stats-explain-doctor P03 | 4min | 3 tasks | 5 files |
+| Phase 04-cli-completion-stats-explain-doctor P04 | 4min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -138,6 +139,8 @@ Full decision log lives in PROJECT.md "Key Decisions" (13 LOCKED ADRs). Recent d
 - [Phase 04]: [Phase 04 PLAN-02]: Runner::filter_bytes is the subprocess-free byte-replay entry point (D-04) mirroring runtime/mod.rs:342-359 exit-code branch (ADR-0010 success/on_error/raw-passthrough) so explain (Wave 2) re-derives filtered output from stored bytes without spawning; branch-fidelity tests lock all 3 cases (T-04-04). Sig: filter_bytes(&mut self, merged_bytes: &[u8], exit_code: i32, duration_ms: u64, command_raw: &str, project_path: Option<String>) -> Result<Vec<String>, RuntimeError>
 - [Phase 04]: [Phase 04 PLAN-03]: lacon stats reads tracking::query views (unfiltered) and switches to D-09 base-table filtered re-queries when any of --project/--since/--rule set; --since v1 grammar is single-unit Nd/Nh/Nm -> ms cutoff (malformed -> exit 2 no panic); empty-DB checked via db_path.exists() before open_readonly -> 'no data yet' + exit 0 (D-03)
 - [Phase 04]: [Phase 04 PLAN-03]: lacon explain replays stored raw bytes (stdout++stderr) through Runner::filter_bytes selecting the ADR-0010 branch from the stored exit code, renders a hand-rolled raw|filtered side-by-side (no diff crate, D-06); NULL raw_output_id errors pointing at store_raw_outputs (SC2); non-numeric id -> exit 2 never panics (T-04-07); insta NOT adopted (rusqlite stays dev-only, D-01); exit codes 0/1/2 (success / op-failure / bad-input)
+- [Phase ?]: [Phase 04 PLAN-04]: lacon doctor is a fixed five-check sweep (hook install / config-per-layer / rule sweep / DB dir perms 0700 / read-only tracker health) printing one Pass/Fail/Warn line each; exit 0 iff no check hard-fails (D-07). Fresh machine (no settings.json/no history.db) reads informational [warn] not red and exits 0 (D-03); a positively broken state flips it red.
+- [Phase ?]: [Phase 04 PLAN-04]: doctor DB checks use open_readonly ONLY (D-08, T-04-11) and gate on db_path.exists() before opening, so a fresh run never creates history.db (D-04 preserved); doctor.rs has zero Tracker::open refs (grep gate = 0). cli_surface hardened: purge/install/stats --serve each proven non-zero (D-13, REQ-cli-surface-cap).
 
 ### Pending Todos
 
@@ -162,6 +165,6 @@ None blocking. Three deferred-to-prototyping open questions assigned to phases a
 
 ## Session Continuity
 
-Last session: 2026-05-21T22:18:42.388Z
+Last session: 2026-05-21T22:25:57.109Z
 Stopped at: Completed 04-02-PLAN.md (Runner::filter_bytes)
 Resume file: None

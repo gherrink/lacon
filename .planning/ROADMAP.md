@@ -13,7 +13,7 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
 - [x] **Phase 1: Engine core & `lacon run` wrapper** - Streaming pipeline + Starlark `post_process` + rule loader + the production wrapper that runs every filter (SC4 gap re-opened 2026-05-06; closure plan: 01-08) (completed 2026-05-06)
 - [ ] **Phase 2: Local tracking** - SQLite history at `~/.local/share/lacon/history.db` with privacy contract, retention, and the four required views
 - [x] **Phase 3: Claude Code adapter & `lacon init`** - `PreToolUse` hook with chained-command splitting, TUI bypass, bypass detection, and one-shot project setup (completed 2026-05-21)
-- [ ] **Phase 4: CLI completion (`stats`, `explain`, `doctor`)** - Introspection commands backed by tracking data plus the six-command surface cap
+- [x] **Phase 4: CLI completion (`stats`, `explain`, `doctor`)** - Introspection commands backed by tracking data plus the six-command surface cap (completed 2026-05-21)
 - [ ] **Phase 5: Bundled Tier 1 rules** - Ten YAML rules with success/failure fixtures and integration tests asserting ≥50% reduction with zero error-line drops
 - [ ] **Phase 6: v1 ship gate — acceptance & docs** - End-to-end acceptance validation (cold start, hot reload, `pnpm` E2E, `explain` reproducibility, hermetic test coverage) plus README, worked example, and primitive reference
 
@@ -92,7 +92,7 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
 - [x] 04-01-PLAN.md — Tracking read surface: open_readonly helper + tracking::query API + Wave-0 WAL read-only spike
 - [x] 04-02-PLAN.md — Runner::filter_bytes byte-replay for explain (exit-code branch fidelity)
 - [x] 04-03-PLAN.md — stats + explain commands + main.rs arg threading + black-box tests
-- [ ] 04-04-PLAN.md — doctor five-check sweep + six-command surface cap hardening
+- [x] 04-04-PLAN.md — doctor five-check sweep + six-command surface cap hardening
 
 ### Phase 5: Bundled Tier 1 rules
 **Goal**: Ten Tier 1 YAML rules ship in `bundled-rules/` (`pkg-install`, `cargo-build`, `cargo-test`, `vitest`, `jest`, `pytest`, `tsc`, `eslint`, `git-status`, `docker-build`), each with a success-path fixture and a failure-path fixture under `tests/fixtures/<rule-id>/<scenario>/` and an integration test asserting ≥50% reduction with zero error-line drops.
@@ -126,6 +126,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 5 (bundl
 | 1. Engine core & `lacon run` wrapper | 8/8 | Complete   | 2026-05-06 |
 | 2. Local tracking | 4/6 | In Progress|  |
 | 3. Claude Code adapter & `lacon init` | 5/5 | Complete   | 2026-05-21 |
-| 4. CLI completion (`stats`, `explain`, `doctor`) | 3/4 | In Progress|  |
+| 4. CLI completion (`stats`, `explain`, `doctor`) | 4/4 | Complete   | 2026-05-21 |
 | 5. Bundled Tier 1 rules | 0/TBD | Not started | - |
 | 6. v1 ship gate — acceptance & docs | 0/TBD | Not started | - |
