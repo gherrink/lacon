@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-05-21T19:15:17.957Z"
+last_updated: "2026-05-21T19:21:47.843Z"
 last_activity: 2026-05-21
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 19
-  completed_plans: 15
+  completed_plans: 16
   percent: 33
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Phase: 03 (claude-code-adapter-lacon-init) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-05-21
 
-Progress: [████████░░] 79%
+Progress: [████████░░] 84%
 
 ## Performance Metrics
 
@@ -65,6 +65,7 @@ Progress: [████████░░] 79%
 | Phase 02-local-tracking PP05 | 12min | 3 tasks | 4 files |
 | Phase 02-local-tracking P06 | 24min | 3 tasks | 8 files |
 | Phase 03 P01 | 5min | 3 tasks | 6 files |
+| Phase 03 P02 | 3min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -116,6 +117,8 @@ Full decision log lives in PROJECT.md "Key Decisions" (13 LOCKED ADRs). Recent d
 - [Phase ?]: [Phase 03 PLAN-01]: adapter dep set locked to lacon-core + serde + serde_json + anyhow (D-02 cold-start); grep gate forbids rusqlite/starlark/os_pipe/regex/etcetera/signal-hook/nix
 - [Phase ?]: [Phase 03 PLAN-01]: HookInput omits deny_unknown_fields (CC may add fields); BashToolInput skip_serializing_if=Option::is_none so updatedInput never injects null (D-03 echo-back)
 - [Phase ?]: [Phase 03 PLAN-01]: rule matcher promoted to lacon_core::rules::match_argv_via_load_all; empty-argv returns Ok(None); lacon-cli run delegates; cli_run.rs byte-for-byte unchanged
+- [Phase ?]: [Phase 03 PLAN-02]: chain splitter is a single-pass 8-field DFA (process_sub_depth wired per RESEARCH:510); | never splits (D-09); trailing_op_span carries leading+op+trailing ws for byte-exact reassembly
+- [Phase ?]: [Phase 03 PLAN-02]: heredoc body opaque via real delimiter-line tracking (<<DELIM/<<-DELIM/quoted); S11 fixture passes without the opaque-until-EOL fallback; <<< here-string is 3-byte opaque token
 
 ### Pending Todos
 
@@ -140,6 +143,6 @@ None blocking. Three deferred-to-prototyping open questions assigned to phases a
 
 ## Session Continuity
 
-Last session: 2026-05-21T19:15:06.859Z
+Last session: 2026-05-21T19:21:33.049Z
 Stopped at: Completed 03-01-PLAN.md
 Resume file: None
