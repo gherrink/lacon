@@ -11,11 +11,7 @@
 
 pub mod chain;
 pub mod protocol;
-
-// Wave-2 modules (Plan 03-03) land these files; declaring them now would
-// be a compile error since the files don't yet exist:
-//   pub mod tui;     // is_tui heuristic (Plan 03-03)
-//   pub mod quote;   // quote_for_shell (Plan 03-03)
+pub mod tui;
 
 /// The decision `run_hook` returns to the binary entry point.
 ///
