@@ -389,6 +389,92 @@ impl Runner {
         })
     }
 
+    /// Re-derive filtered output from STORED stdout/stderr bytes WITHOUT
+    /// spawning a subprocess (D-04). Unlike [`Runner::run`] — which always
+    /// spawns the original command — `filter_bytes` feeds previously-captured
+    /// bytes through the rule's pipeline. The `explain` command (Wave 2) uses
+    /// this to reproduce what the live runner emitted from stored `raw_outputs`.
+    ///
+    /// # Exit-code branch source of truth
+    /// The success / on_error / raw-passthrough branch MUST mirror the live
+    /// runner at `runtime/mod.rs:342-359` (ADR-0010) exactly:
+    ///   - `exit_code == 0`            -> `success_pipeline` (+ `post_process`)
+    ///   - `exit_code != 0` + on_error -> `on_error_pipeline` (+ `on_error_post_process`)
+    ///   - `exit_code != 0` + none     -> raw lines unchanged (ADR-0010 passthrough)
+    ///
+    /// Phase 6 reproducibility (SC3) depends on this branch staying byte-for-byte
+    /// identical to the live runner. The branch-fidelity tests in
+    /// `tests/runtime_filter_bytes.rs` lock all three cases so a future edit that
+    /// desyncs one path from the other fails CI (T-04-04).
+    ///
+    /// # ScriptCtx provenance
+    /// `command`/`args` are reconstructed from the STORED `command_raw` (a
+    /// whitespace split), NOT a live process. `exit_code`, `duration_ms`, and
+    /// `project_path` are likewise the STORED values supplied by the caller.
+    /// An empty `command_raw` yields an empty command + empty args.
+    ///
+    /// # Stream model
+    /// v1 stores a single merged stdout+stderr stream (see [`ByteCounts`]).
+    /// `merged_bytes` is split on `b'\n'` and lossily decoded as UTF-8, mirroring
+    /// the live reader's `String::from_utf8_lossy` approach (runtime/mod.rs:265-270).
+    ///
+    /// # Errors
+    /// Returns `RuntimeError` variants from `Pipeline::run_with_post_process`.
+    pub fn filter_bytes(
+        &mut self,
+        merged_bytes: &[u8],
+        exit_code: i32,
+        duration_ms: u64,
+        command_raw: &str,
+        project_path: Option<String>,
+    ) -> Result<Vec<String>, RuntimeError> {
+        // ScriptCtx command/args from the STORED command_raw (not a live process).
+        // Whitespace split is acceptable for ctx population per D-04: the ctx is
+        // a best-effort reconstruction for Starlark, not a re-execution argv.
+        let mut parts = command_raw.split_whitespace();
+        let command = parts.next().unwrap_or("").to_string();
+        let args: Vec<String> = parts.map(|s| s.to_string()).collect();
+
+        // Split merged bytes into lines (mirror runtime/mod.rs:265-270 lossy UTF-8;
+        // v1 is a single merged stream per ByteCounts at :60-66).
+        let lines: Vec<String> = merged_bytes
+            .split(|&b| b == b'\n')
+            .map(|l| String::from_utf8_lossy(l).into_owned())
+            .collect();
+
+        // ScriptCtx from STORED values (mirror :327-333, sourced from args).
+        let ctx = ScriptCtx {
+            exit_code,
+            duration_ms,
+            command,
+            args,
+            project_path,
+        };
+
+        // ─── Exit code branch (mirrors runtime/mod.rs:342-359, ADR-0010) ──────
+        // exit_code == 0: success_pipeline. exit_code != 0: on_error_pipeline if
+        // present, else raw passthrough. NEVER calls Runner::run (no spawn).
+        let filtered = if exit_code == 0 {
+            self.resolved.success_pipeline.run_with_post_process(
+                lines.into_iter(),
+                self.resolved.post_process.as_ref(),
+                &ctx,
+            )?
+        } else if let Some(ref mut on_err) = self.resolved.on_error_pipeline {
+            on_err.run_with_post_process(
+                lines.into_iter(),
+                self.resolved.on_error_post_process.as_ref(),
+                &ctx,
+            )?
+        } else {
+            // No on_error block: ADR-0010 raw passthrough — replay MUST preserve
+            // this so a non-zero exit with no on_error returns lines unchanged.
+            lines
+        };
+
+        Ok(filtered)
+    }
+
     /// Run bypassed: subprocess inherits stdout/stderr; no filtering.
     ///
     /// Called when `LACON_DISABLE=1` is set in the environment.
