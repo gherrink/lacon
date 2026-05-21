@@ -624,11 +624,16 @@ pub fn has_unwrappable_construct(segment: &str) -> bool {
             if b == b'{' {
                 state.param_expansion_depth += 1;
                 i += 1;
+                // `{`/`}` are non-whitespace, so a `#` glued after a closed
+                // `${...}` (e.g. `echo ${x}#tag`) is NOT in word position and must
+                // not start a comment — keep the word-position flag accurate (WR-01).
+                prev_was_ws_or_start = false;
                 continue;
             }
             if b == b'}' {
                 state.param_expansion_depth -= 1;
                 i += 1;
+                prev_was_ws_or_start = false;
                 continue;
             }
         }
@@ -646,6 +651,9 @@ pub fn has_unwrappable_construct(segment: &str) -> bool {
         if b == b'(' && !state.in_double_quote {
             state.subshell_depth += 1;
             i += 1;
+            // `(`/`)` are non-whitespace: a `#` glued after a closed `(...)`
+            // subshell (e.g. `(true)#tag`) is not in word position (WR-01).
+            prev_was_ws_or_start = false;
             continue;
         }
         if b == b')' && !state.in_double_quote {
@@ -655,6 +663,7 @@ pub fn has_unwrappable_construct(segment: &str) -> bool {
                 state.subshell_depth -= 1;
             }
             i += 1;
+            prev_was_ws_or_start = false;
             continue;
         }
         // A top-level `#` in word position starts a comment (CR-03).
@@ -926,5 +935,21 @@ mod tests {
         assert!(!has_unwrappable_construct("echo '> not a redirect'"));
         assert!(!has_unwrappable_construct("echo '$(not a sub)'"));
         assert!(!has_unwrappable_construct("echo '# not a comment'"));
+    }
+
+    // ── WR-01: word-position flag must not stay stale after a closed construct ──
+
+    #[test]
+    fn unwrappable_glued_hash_after_closed_construct_is_not_a_comment() {
+        // A `#` glued immediately after a `)` (closing a subshell) or a `}`
+        // (closing a `${...}` opened inside a subshell) is NOT in word position,
+        // so it must NOT be treated as a comment. Before the WR-01 fix the
+        // word-position flag was stale-`true` after the closing byte because the
+        // `(` / `)` / `${...}`-interior branches `continue`d without clearing it,
+        // causing a false-positive "comment" → over-conservative unwrappable.
+        // None of these contain `$`/`~`/glob at top level, so CR-01 does not flag
+        // them either; the only special is the glued `#`.
+        assert!(!has_unwrappable_construct("(echo x )#tag"));
+        assert!(!has_unwrappable_construct("(echo ${x} )#tag"));
     }
 }
