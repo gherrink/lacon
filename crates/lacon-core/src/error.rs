@@ -160,6 +160,14 @@ pub enum TrackingError {
     /// (WR-02 fix.)
     #[error("tracking: SQLite rejected journal_mode=WAL; got `{actual_mode}` instead")]
     WalRejected { actual_mode: String },
+    /// The health probe got an unexpected value back from the DB (e.g.
+    /// `SELECT 1` did not return `1`). `doctor` runs `health_check` on a
+    /// possibly-corrupt, user-owned `history.db`; the probe's whole job is to
+    /// *report* DB problems gracefully, so an unexpected probe result must be
+    /// a returned error — never a `debug_assert!` panic that would abort a
+    /// debug-build `doctor`. (WR-05 fix; same posture as `WalRejected`.)
+    #[error("tracking: health probe returned unexpected value `{got}` (expected `{expected}`)")]
+    HealthProbe { expected: i32, got: i32 },
 }
 
 impl ValidationError {
