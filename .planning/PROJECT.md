@@ -18,7 +18,9 @@ If filtering accuracy or cold-start budget fails, the project fails. Everything 
 
 <!-- Shipped and confirmed valuable. -->
 
-(None yet — design phase, no source code yet.)
+- **Engine + `lacon run` wrapper** (Phase 1) — streaming pipeline, 10 native primitives, Starlark `post_process`, rule loading/`extends`, `on_error` swap, `max_bytes` cap, `lacon validate`.
+- **Local tracking** (Phase 2) — SQLite at `~/.local/share/lacon/history.db` with the v1 privacy contract, four views, startup pruning, cold-start budget held.
+- **Claude Code adapter + `lacon init`** (Phase 3) — `lacon-claude-hook` `PreToolUse` binary (chain split → TUI bypass → per-segment rule resolve → wrap), `lacon init` installs the hook + `.lacon/` skeleton + CLAUDE.md block. Closes REQ-adapter-pretooluse-only, -bypass-detection, -chained-commands, -tui-bypass, -pipes-passthrough, REQ-cli-init. Wrap-eligibility is a positive `is_wrap_safe` allowlist: only provably-literal segments are wrapped; any shell-active construct (vars, globs, brace expansion, redirections, pipes, `~`) passes through byte-exact.
 
 ### Active
 
@@ -51,7 +53,7 @@ Explicit v1 exclusions from `docs/v1-scope.md` and `docs/backlog.md`:
 
 ## Context
 
-**Project status (2026-05-06):** Design phase. No source code, no `Cargo.toml`. The 13 ADRs in `docs/decisions/`, 4 specs in `docs/specs/`, and 2 PRDs (`docs/v1-scope.md`, `docs/vision.md`) form the authoritative contract. Treat them as the source of truth — proposed changes that contradict an ADR must surface that explicitly.
+**Project status (2026-05-21):** Implementation underway — Phases 1–3 of 6 complete (engine, tracking, Claude Code adapter + `lacon init`). The Rust workspace exists (`crates/lacon-core`, `crates/lacon-cli`, `crates/lacon-adapter-claudecode`). The 13 ADRs in `docs/decisions/`, 4 specs in `docs/specs/`, and 2 PRDs (`docs/v1-scope.md`, `docs/vision.md`) remain the authoritative contract. Treat them as the source of truth — proposed changes that contradict an ADR must surface that explicitly. Next: Phase 4 (CLI completion — `stats`, `explain`, `doctor`).
 
 **Architecture (`docs/architecture.md`, updated 2026-05-05):** Adapter (per assistant) → `lacon run` wrapper → rule resolver → pipeline runner (streaming) → tracker (SQLite). The Claude Code `PreToolUse` hook does both jobs: applies the rule's `rewrite` block (flag add/remove) and, for matched commands, wraps the command as `lacon run --rule <id> -- <cmd>`. Filtering happens inside `lacon run`, which spawns the subprocess, merges stderr into stdout, and writes filtered bytes to its own stdout — that's what Claude Code captures as the tool result.
 
@@ -143,4 +145,4 @@ All 13 ADRs are LOCKED (`status: Accepted`) and form an internally consistent ad
 | **ADR-0013** — Filter via PreToolUse-rewritten subprocess wrapper | Empirical probe 2026-05-05 confirmed `PostToolUse` cannot replace tool output. `lacon run --rule <id> -- <cmd>` spawns subprocess, merges stderr into stdout, runs pipeline (or `on_error`), writes filtered bytes to its own stdout, exits with subprocess's exit code. ADDITIVE — narrows ADR-0001 only on execution location; no prior ADR is amended. | LOCKED |
 
 ---
-*Last updated: 2026-05-06 after initial planning ingest from `.planning/intel/` (24 docs synthesized: 13 ADRs, 4 SPECs, 2 PRDs, 5 DOCs; 0 conflicts blocking, 5 INFO).*
+*Last updated: 2026-05-21 after Phase 3 (Claude Code adapter & `lacon init`) completed — verification passed 9/9, code review resolved (denylist→`is_wrap_safe` allowlist inversion).*
