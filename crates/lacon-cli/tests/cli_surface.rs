@@ -58,3 +58,44 @@ fn version_flag_works() {
         .success()
         .stdout(predicates::str::contains("0.1.0"));
 }
+
+// ─── D-13: forbidden v2 subcommands MUST be absent ──────────────────────────
+//
+// REQ-cli-surface-cap caps the surface at exactly six subcommands. The v2
+// backlog items below are explicitly out of v1 scope (docs/backlog.md,
+// PROJECT.md "Out of Scope"): `lacon purge` (manual cleanup only in v1),
+// `lacon install gh:user/repo` (no public rule registry in v1), and a
+// `lacon stats --serve` web UI (no daemon, no network — CON-nfr-no-network).
+// These belt-and-suspenders assertions prove the forbidden surfaces reject
+// non-zero, so a future accidental addition fails CI here.
+
+#[test]
+fn forbidden_purge_subcommand_rejected() {
+    // `purge` is not a declared subcommand → clap errors non-zero.
+    Command::cargo_bin("lacon")
+        .unwrap()
+        .arg("purge")
+        .assert()
+        .failure();
+}
+
+#[test]
+fn forbidden_install_subcommand_rejected() {
+    // `install` (public rule registry, v2 backlog) is not declared → non-zero.
+    Command::cargo_bin("lacon")
+        .unwrap()
+        .arg("install")
+        .assert()
+        .failure();
+}
+
+#[test]
+fn forbidden_stats_serve_flag_rejected() {
+    // `stats` is a real subcommand but `--serve` is not one of its args, so
+    // clap rejects the unknown argument non-zero (no web-UI/daemon path, D-13).
+    Command::cargo_bin("lacon")
+        .unwrap()
+        .args(["stats", "--serve"])
+        .assert()
+        .failure();
+}
