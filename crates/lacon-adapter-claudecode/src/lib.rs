@@ -224,11 +224,20 @@ pub fn run_hook(input: protocol::HookInput) -> anyhow::Result<HookOutcome> {
                 rendered.push(segment.text.clone());
             }
             Err(errors) => {
-                // A bad rule file must not break the hook (best-effort): log to
-                // stderr and treat this segment as unmatched.
+                // WR-06: a bad rule file must not break the hook (best-effort
+                // pass-through is the right safety posture). But Claude Code does
+                // NOT surface hook stderr in the normal flow (it captures stdout
+                // as the tool result), so a stderr-only message is invisible —
+                // a malformed rule would silently disable filtering with no
+                // feedback. Make the failure observable by ALSO appending it to a
+                // discoverable log file (`<XDG_DATA_HOME>/lacon/hook-errors.log`)
+                // that `lacon doctor` / the user can inspect. This is the
+                // exceptional path (only fires on a malformed rule), so it does
+                // not affect the success hot path or the ≤10ms cold-start budget.
                 for e in &errors {
                     eprintln!("lacon-claude-hook: rule load error: {e}");
                 }
+                log_rule_load_errors(&errors);
                 rendered.push(segment.text.clone());
             }
         }
@@ -251,6 +260,38 @@ pub fn run_hook(input: protocol::HookInput) -> anyhow::Result<HookOutcome> {
     new_input.command = command_out;
     let value = crate::protocol::build_rewrite_response(&new_input);
     Ok(HookOutcome::Rewrite(value))
+}
+
+/// Append rule-load errors to a discoverable log file so a malformed rule does
+/// not degrade filtering *silently* (WR-06). Claude Code does not surface hook
+/// stderr, so stderr alone is invisible; this writes to
+/// `<XDG_DATA_HOME>/lacon/hook-errors.log` (sibling of the tracker DB) which the
+/// user / `lacon doctor` can inspect.
+///
+/// Fully best-effort: any failure to resolve the path or open/write the file is
+/// swallowed (a logging failure must never break the hook). Only called on the
+/// exceptional malformed-rule path, so it never touches the success hot path.
+fn log_rule_load_errors(errors: &[lacon_core::error::ValidationError]) {
+    use std::io::Write;
+
+    let Some(db_path) = lacon_core::tracking::Tracker::xdg_db_path() else {
+        return;
+    };
+    let log_path = db_path.with_file_name("hook-errors.log");
+    if let Some(parent) = log_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+    else {
+        return;
+    };
+    for e in errors {
+        // Best-effort: ignore individual write failures.
+        let _ = writeln!(file, "rule load error: {e}");
+    }
 }
 
 #[cfg(test)]
