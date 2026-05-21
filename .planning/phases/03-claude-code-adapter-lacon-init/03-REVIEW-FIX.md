@@ -1,126 +1,162 @@
 ---
 phase: 03-claude-code-adapter-lacon-init
-fixed_at: 2026-05-21T20:09:31Z
+fixed_at: 2026-05-21T20:30:00Z
 review_path: .planning/phases/03-claude-code-adapter-lacon-init/03-REVIEW.md
-iteration: 3
-findings_in_scope: 3
-fixed: 3
+iteration: 4
+findings_in_scope: 1
+fixed: 1
 skipped: 0
 status: all_fixed
 ---
 
-# Phase 3: Code Review Fix Report
+# Phase 3: Code Review Fix Report (iteration 4 — allowlist inversion)
 
-**Fixed at:** 2026-05-21T20:09:31Z
+**Fixed at:** 2026-05-21T20:30:00Z
 **Source review:** .planning/phases/03-claude-code-adapter-lacon-init/03-REVIEW.md
-**Iteration:** 3
+**Iteration:** 4
 
 **Summary:**
-- Findings in scope: 3 (1 Critical + 2 Warning; Info findings IN-01..IN-03 out of scope)
-- Fixed: 3
+- Findings in scope: 1 (the user-approved architectural fix for the CR-01 root cause)
+- Fixed: 1
 - Skipped: 0
 
-All three in-scope findings live in the same function,
-`has_unwrappable_construct` in `crates/lacon-adapter-claudecode/src/chain.rs`.
-They were fixed in three atomic commits, ordered dead-code-removal (WR-02) →
-flag-correctness (WR-01) → widen-the-guard (CR-01), so each commit left the crate
-compiling and its tests green.
+This iteration is a single, user-approved architectural change: the wrap-gate
+predicate that decides whether a matched chain segment may be re-tokenized and
+re-quoted into `lacon run --rule <id> -- <argv>` was inverted from a **denylist**
+of dangerous shell constructs (`has_unwrappable_construct` + the separate
+`has_top_level_pipe` guard) to a positive **allowlist** (`is_wrap_safe`).
+
+## Why the denylist had to go (CR-01 root cause)
+
+When `run_hook` wraps a matched segment it tokenizes it (`argv_for_resolution`),
+applies the rule's flag rewrite (`apply_rewrite`, D-19), and re-quotes every
+token with `quote_for_shell` (single-quoting). Single-quoting neutralizes EVERY
+shell expansion, and the downstream Runner executes
+`Command::new(argv[0]).args(...)` with NO shell hop — so there is no place to
+faithfully re-emit any expansion bash would have performed.
+
+The denylist tried to enumerate every construct that breaks under that round-trip
+and kept missing cases. The most recent miss was **brace expansion** (`{a,b}` /
+`{1..10}`): `eslint src/{a,b}.js` was wrapped and silently corrupted into the
+literal `'src/{a,b}.js'`. An allowlist instead wraps ONLY segments that are
+*provably reproducible* by tokenize→requote and passes everything else through
+byte-exact (the fail-safe direction, per `docs/specs/chained-commands.md:17`).
 
 ## Fixed Issues
 
-### CR-01: Variable / tilde / glob expansion silently neutralized when a matched segment is wrapped
+### CR-01 (root cause): wrap gate inverted to `is_wrap_safe` allowlist
 
-**Files modified:** `crates/lacon-adapter-claudecode/src/chain.rs`, `crates/lacon-adapter-claudecode/tests/hook_e2e.rs`
-**Commit:** 477b5d3
+**Files modified:** `crates/lacon-adapter-claudecode/src/chain.rs`,
+`crates/lacon-adapter-claudecode/src/lib.rs`,
+`crates/lacon-adapter-claudecode/tests/hook_e2e.rs`
+**Commit:** 2211010
 **Status:** fixed
-**Applied fix:** Widened `has_unwrappable_construct` so that, after the existing
-quote/opacity-aware scan, ANY unquoted shell-expansion metacharacter marks the
-segment unwrappable (byte-exact pass-through) rather than being re-tokenized and
-single-quoted by `quote_for_shell`:
-- A bare `$` not part of `${`/`$(` (checked AFTER those two branches so they keep
-  their dedicated handling) → return true. Because the scan is already past the
-  single-quote early-continue, any `$` reaching this point is outside single
-  quotes; this fires for `$VAR`, `$1`, `$?`, `$@`, and also inside double quotes
-  (`"$HOME"` still expands in bash), which is strictly more conservative than the
-  review's `at_top_level()`-only snippet and matches the stated principle ("extend
-  to every shell expansion `quote_for_shell` neutralizes").
-- Unquoted glob metacharacters `*` / `?` / `[` at top level → return true.
-- A leading `~` in word position (`prev_was_ws_or_start`) at top level → return
-  true; a mid-token `~` (e.g. `a~b`) is correctly NOT flagged.
+**Applied fix:**
 
-Reused the existing chain.rs DFA opacity tracking (single/double-quote and
-subshell/cmd-sub depth) so bytes inside single quotes are still treated as literal
-and faithfully reproduced. Corrected the iteration-1 test that wrongly asserted
-`echo $var` was wrappable: replaced it with `unwrappable_detects_bare_variable_expansion`
-(plus `unwrappable_detects_glob_metacharacters` and `unwrappable_detects_tilde_expansion`)
-in the chain.rs unit tests, and added e2e regressions
-`bare_variable_expansion_segment_passes_through_unwrapped` (`echo $HOME`,
-`echo $1`), `glob_segment_passes_through_unwrapped` (`echo *.txt`), and
-`tilde_segment_passes_through_unwrapped` (`echo ~`) in hook_e2e.rs proving the
-compiled hook now passes these through unwrapped.
+1. **New predicate `is_wrap_safe(segment: &str) -> bool`** (replaces both
+   `has_unwrappable_construct` and `has_top_level_pipe`). Single-pass,
+   allocation-free, linear-time (preserves the ≤10ms cold-start budget,
+   ADR-0013). Returns `true` ONLY when the segment is composed EXCLUSIVELY of:
+   - whitespace separators (space, tab);
+   - top-level "safe literal" bytes that are inert in the shell AND survive a
+     `quote_for_shell` round-trip — ASCII alphanumerics plus `/ . - _ = : @ , + %`
+     (via the tiny `is_safe_literal_byte` helper);
+   - single-quoted spans `'...'` (always literal/safe; unterminated → unsafe);
+   - double-quoted spans `"..."` containing NO `$`, backtick, or backslash (a
+     double-quoted *literal* like `"a b"` is safe; `"$HOME"` is NOT; unterminated
+     → unsafe).
 
-### WR-01: `#` comment detector false-positive after a closed `${...}` or `(...)` (stale word-position flag)
+   Any other top-level byte makes the segment NOT wrap-safe — `$`, backtick,
+   `* ? [ ] { }`, `~`, `< >`, `|`, `&`, `;`, `( )`, `#`, `!`, `\`, newline/CR, and
+   any control / non-printable / non-ASCII byte. Empty / whitespace-only segments
+   are rejected (nothing to wrap).
 
-**Files modified:** `crates/lacon-adapter-claudecode/src/chain.rs`
-**Commit:** df0fbfa
-**Status:** fixed
-**Applied fix:** Set `prev_was_ws_or_start = false` before the `continue` in the
-`${...}` interior `{`/`}` branch and in the `(` / `)` branches of
-`has_unwrappable_construct`. Since `{`, `}`, `(`, `)` are non-whitespace bytes, a
-`#` glued immediately after a closed construct is not in word position and must
-not start a comment. Added unit test
-`unwrappable_glued_hash_after_closed_construct_is_not_a_comment` covering
-`(echo x )#tag` and `(echo ${x} )#tag` (both now NOT unwrappable). Note the
-review's literal example `echo ${x}#tag` cannot exercise this in THIS predicate
-because a top-level `${` already short-circuits to `true`; the realistic trigger
-is a construct closing back to top level inside/after a subshell, which the new
-tests cover.
+2. **Call site (`lib.rs`, the wrap path) updated** to the allowlist semantics:
+   `if !is_wrap_safe(&segment.text) { pass through byte-exact }`. The single
+   allowlist check subsumes the old two-guard combination
+   (`has_top_level_pipe || has_unwrappable_construct`): `|` is simply not a safe
+   literal byte, so a pipelined segment is no longer wrap-safe.
 
-### WR-02: `has_unwrappable_construct` carried unreachable heredoc / process-sub machinery
+3. **`has_top_level_pipe` removed entirely** (no remaining callers; the allowlist
+   rejects `|`). Its five unit tests were removed and replaced with a documenting
+   NOTE plus explicit `is_wrap_safe` pipe-rejection coverage; the
+   pipe-passthrough e2e (`pipe_in_segment_preserved_not_split`) remains green.
 
-**Files modified:** `crates/lacon-adapter-claudecode/src/chain.rs`
-**Commit:** 94134f1
-**Status:** fixed
-**Applied fix:** Deleted the unreachable heredoc-body block from
-`has_unwrappable_construct` (the function has no `<<DELIM` opener branch, so
-`state.in_heredoc` is never set) and removed the dead `process_sub_depth`
-decrement arm from its `)` branch (no `<(`/`>(` opener branch increments it). Both
-are subsumed by the top-level `<`/`>` short-circuit that returns `true` for ANY
-redirection byte before opacity could matter. Replaced the removed code with a
-short explanatory comment documenting that any top-level `<`/`>` (which subsumes
-heredoc / here-string / process-sub openers) short-circuits to unwrappable. The
-full heredoc/process-sub machinery is intentionally retained only in `split_chain`
-and `has_top_level_pipe`, where it is live.
+### Round-trip correctness check (task step 3)
+
+Confirmed that for every segment `is_wrap_safe` accepts, the existing
+`argv_for_resolution` tokenizer + `quote_for_shell` round-trips faithfully:
+- `argv_for_resolution` already keeps a quoted span's whitespace inside one token
+  (`echo "a b"` → `["echo","a b"]`, `echo 'a b'` → `["echo","a b"]`) — it does
+  NOT split the quoted span. So quoted spans containing whitespace are safe to
+  accept; no tokenizer change and no extra `is_wrap_safe` tightening was needed.
+- Bare safe-literal runs split on whitespace into inert tokens; `quote_for_shell`
+  re-emits each (single-quoting any that contain `=`/`%`, both inert), so the
+  single downstream `bash -c` parse reconstructs the identical argv.
+- Adjacent-quote glue (`echo a'b'c` → `["echo","abc"]`) round-trips too.
+
+Because a wrap-safe segment contains no expansion, redirection, or operator, the
+requoted argv reproduces the exact same program invocation.
+
+## Tests
+
+**Unit (`chain.rs`)** — replaced the `has_unwrappable_construct` /
+`has_top_level_pipe` suites with `is_wrap_safe` ACCEPT/REJECT tables:
+- ACCEPT: `cargo build --release`, `pytest -k foo`, `eslint .`,
+  `npm run test:unit`, `cmd --features=a,b,c`, `KEY=value cmd`,
+  `echo 'literal text'`, `echo "literal text"`, plus quoted-literal-span,
+  glued-quote, and inert-punctuation rows.
+- REJECT: `echo $HOME`, `echo ${x}`, `echo $(whoami)`, ``echo `id` ``,
+  `ls *.rs`, `ls src/{a,b}.js`, `echo {1..10}`, `echo ~`, `echo hi > out.txt`,
+  `a | b`, `a & b`, `a # c`, `echo "$HOME"`, `echo a\ b`, plus
+  unterminated/unsafe quoted spans, non-ASCII/control bytes, and
+  empty/whitespace-only segments.
+
+**e2e (`hook_e2e.rs`)** — added the brace-expansion regressions the denylist
+missed:
+- `brace_expansion_segment_passes_through_unwrapped` — `eslint src/{a,b}.js` and
+  `eslint {1..10}.js` now pass through UNWRAPPED.
+- `brace_expansion_segment_preserved_while_sibling_wrapped` — `cargo build {a,b}`
+  is preserved byte-exact while the sibling `echo done` is still WRAPPED
+  (per-segment posture intact).
+- The prior CR-01..CR-04 / WR-02 pass-through scenarios (redirections,
+  command/process substitution, comments, `${...}`, escaped whitespace, bare
+  `$VAR`, globs, `~`) all still pass through unwrapped, and the plain matched
+  commands (`matched_single_command_emits_rewrite_json`,
+  `chain_with_one_matched_one_unmatched_emits_chain_rewrite`) still WRAP.
+
+**chain reassembly (`chain_split.rs`)** — untouched; the byte-exact reassembly
+matrix (19 tests) remains green (`is_wrap_safe` only changes wrap-vs-passthrough,
+not how `split_chain` produces segments).
+
+## Verification
+
+- `cargo test -p lacon-adapter-claudecode`: all green — 52 lib unit tests
+  (incl. 13 new `wrap_safe_*` tests), 19 `chain_split`, 22 `hook_e2e` (incl. the
+  2 new brace-expansion regressions), 51 `tui_heuristic`, 1 doc-test.
+- `cargo test --workspace`: the only failures are the 5 pre-existing
+  `crates/lacon-cli/tests/end_to_end.rs` tests that panic with
+  `CARGO_BIN_EXE_test_emitter is unset` (an `assert_cmd` fixture issue in a crate
+  this fix does not touch). Verified identical failures on the pre-fix base
+  commit (6daa9a9), confirming they pre-date and are independent of this work.
+- `cargo clippy --workspace --all-targets`: zero warnings in
+  `lacon-adapter-claudecode` (either edited file). The remaining warnings are
+  all in `lacon-core` / `lacon-cli` (outside the critical_warning fix scope and
+  not introduced by this change).
+- Hot-path posture (ADR-0013, ≤10ms cold start): `is_wrap_safe` is a single-pass
+  byte scan with one tiny inlined `matches!` helper and no allocations — strictly
+  cheaper than the removed denylist DFA (no `SplitState`, no depth tracking).
+- Byte-exact chain-reassembly invariant preserved: pass-through segments are
+  emitted via `segment.text`, reassembly via `trailing_op_span` is unchanged.
 
 ## Skipped Issues
 
 None.
 
-## Verification
-
-- `cargo test -p lacon-adapter-claudecode`: all green (chain.rs unit tests 25
-  passed; hook_e2e.rs 20 passed; full crate suite passed). The three new e2e
-  pass-through regressions and the corrected/added unit tests all pass.
-- `cargo test --workspace`: the only failures are 5 pre-existing tests in
-  `crates/lacon-cli/tests/end_to_end.rs` that panic with
-  `CARGO_BIN_EXE_test_emitter is unset` — a test-harness fixture issue unrelated
-  to these fixes. Verified identical failures on the pre-fix base commit
-  (94183bb), confirming they pre-date and are independent of this work. Every
-  crate I touched (lacon-adapter-claudecode) is fully green.
-- `cargo clippy --workspace --all-targets`: zero warnings in the adapter crate or
-  in either edited file. The remaining warnings are pre-existing in `lacon-core` /
-  `lacon-cli` (outside the critical_warning fix scope; some overlap the Info-tier
-  IN-* findings that were not in scope for this run).
-- Hot-path posture (ADR-0013, ≤10ms cold start): the CR-01 widening adds only a
-  handful of byte comparisons to the existing single-pass DFA and allocates
-  nothing extra; WR-02 removes code. No new allocations on the success path.
-- Byte-exact chain-reassembly invariant preserved: the widened guard only changes
-  which segments are passed through verbatim vs. wrapped; pass-through segments are
-  emitted byte-exact via `segment.text`, and reassembly via `trailing_op_span` is
-  unchanged. The chain_split.rs reassembly matrix remains green.
-
 ---
 
-_Fixed: 2026-05-21T20:09:31Z_
+_Fixed: 2026-05-21T20:30:00Z_
 _Fixer: Claude (gsd-code-fixer)_
-_Iteration: 3_
+_Iteration: 4_
+</content>
+</invoke>
