@@ -9,11 +9,11 @@
 //! `lacon-core` stays assistant-agnostic — the adapter is the only crate that
 //! knows Claude Code's wire format (D-01, D-02).
 
+pub mod chain;
 pub mod protocol;
 
-// Wave-2 modules (Plans 03-02 / 03-03) land these files; declaring them now would
+// Wave-2 modules (Plan 03-03) land these files; declaring them now would
 // be a compile error since the files don't yet exist:
-//   pub mod chain;   // chain splitter DFA (Plan 03-02)
 //   pub mod tui;     // is_tui heuristic (Plan 03-03)
 //   pub mod quote;   // quote_for_shell (Plan 03-03)
 
