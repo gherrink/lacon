@@ -88,7 +88,11 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
   2. `lacon explain <id>` re-runs the rule's pipeline against the stored raw output for invocation `<id>` and renders a side-by-side diff between raw and filtered, exiting with a clear error message when raw retention was disabled at the time of the original invocation.
   3. `lacon doctor` reports a green status when hooks are installed, `config.yaml` files at every layer parse, every rule loads and validates, and the database directory permissions are `0700`. It surfaces a per-issue actionable error otherwise.
   4. Running `lacon <unknown-subcommand>` returns a non-zero exit code with a clap error pointing at the six legitimate subcommands; the binary has no `purge`, `install`, or `stats --serve` paths in its CLI surface.
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 04-01-PLAN.md — Tracking read surface: open_readonly helper + tracking::query API + Wave-0 WAL read-only spike
+- [ ] 04-02-PLAN.md — Runner::filter_bytes byte-replay for explain (exit-code branch fidelity)
+- [ ] 04-03-PLAN.md — stats + explain commands + main.rs arg threading + black-box tests
+- [ ] 04-04-PLAN.md — doctor five-check sweep + six-command surface cap hardening
 
 ### Phase 5: Bundled Tier 1 rules
 **Goal**: Ten Tier 1 YAML rules ship in `bundled-rules/` (`pkg-install`, `cargo-build`, `cargo-test`, `vitest`, `jest`, `pytest`, `tsc`, `eslint`, `git-status`, `docker-build`), each with a success-path fixture and a failure-path fixture under `tests/fixtures/<rule-id>/<scenario>/` and an integration test asserting ≥50% reduction with zero error-line drops.
@@ -122,6 +126,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 5 (bundl
 | 1. Engine core & `lacon run` wrapper | 8/8 | Complete   | 2026-05-06 |
 | 2. Local tracking | 4/6 | In Progress|  |
 | 3. Claude Code adapter & `lacon init` | 5/5 | Complete   | 2026-05-21 |
-| 4. CLI completion (`stats`, `explain`, `doctor`) | 0/TBD | Not started | - |
+| 4. CLI completion (`stats`, `explain`, `doctor`) | 0/4 | In Progress | - |
 | 5. Bundled Tier 1 rules | 0/TBD | Not started | - |
 | 6. v1 ship gate — acceptance & docs | 0/TBD | Not started | - |
