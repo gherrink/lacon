@@ -9,3 +9,5 @@ name = "cold_start_probe"
 path = "cold_start.rs"
 
 [dependencies]
+serde_json = { workspace = true }
+tempfile = { workspace = true }

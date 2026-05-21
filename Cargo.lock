@@ -1212,6 +1212,10 @@ dependencies = [
 [[package]]
 name = "lacon_benches"
 version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tempfile",
+]
 
 [[package]]
 name = "lalrpop"
