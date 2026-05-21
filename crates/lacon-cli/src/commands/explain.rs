@@ -190,9 +190,18 @@ fn split_lines(bytes: &[u8]) -> Vec<String> {
 
 /// Hand-rolled two-column side-by-side (D-06): no LCS/Myers, no diff crate.
 /// The left column is padded to a fixed width; rows are zipped and the shorter
-/// side is padded with blanks. The raw column reproduces stored bytes verbatim
-/// (byte-fidelity is the contract per Phase 6 SC3 / T-04-09); the filtered
-/// column is the safe-to-read view.
+/// side is padded with blanks.
+///
+/// Terminal-safety contract (T-04-09 / Phase 6 SC3):
+/// - The LEFT (raw) column reproduces stored bytes verbatim — byte-fidelity is
+///   the contract, so escaping is intentionally NOT applied there.
+/// - The RIGHT (filtered) column is the documented "safe-to-read view". WR-01:
+///   the filtered output is NOT guaranteed to be sanitized (unmatched runs pass
+///   raw bytes straight through, and rules without `strip_ansi` keep control
+///   bytes), so a hostile stored build log could otherwise inject terminal
+///   sequences via this column too. We therefore neutralize C0/C1 control and
+///   ESC bytes on the right column unconditionally, making the code honour the
+///   "safe view" claim without touching the raw column's byte-fidelity.
 fn render_side_by_side(command: &str, exit_code: i64, raw: &[String], filtered: &[String]) {
     const LEFT_WIDTH: usize = 60;
 
@@ -209,8 +218,33 @@ fn render_side_by_side(command: &str, exit_code: i64, raw: &[String], filtered: 
         // Truncate/pad the left column to a fixed width for alignment. Use char
         // count for the pad budget so multibyte chars do not under-pad.
         let left_display = pad_or_truncate(left, LEFT_WIDTH);
-        println!("{left_display} | {right}");
+        // WR-01: sanitize the RIGHT column so the "safe view" claim actually
+        // holds even for unmatched runs / rules without strip_ansi.
+        let right_display = sanitize_for_display(right);
+        println!("{left_display} | {right_display}");
     }
+}
+
+/// WR-01: neutralize terminal-control bytes for the filtered ("safe view")
+/// column. Escapes C0 control chars (except `\t`, which is benign for display)
+/// and C1 / DEL so embedded ESC/CSI/OSC sequences from a hostile stored build
+/// log cannot drive the user's terminal (cursor moves, title rewrites, OSC 52
+/// clipboard writes). Printable chars — including non-ASCII text — pass through
+/// unchanged so legitimate filtered output stays readable. Applied ONLY to the
+/// right column; the raw column keeps its byte-fidelity contract (Phase 6 SC3).
+fn sanitize_for_display(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            // Keep tab (column-friendly) and any printable/non-control char.
+            // `is_control()` covers C0 (incl. ESC 0x1B), DEL (0x7F), and C1
+            // (0x80..=0x9F) — exactly the terminal-driving range we must escape.
+            if c == '\t' || !c.is_control() {
+                c.to_string()
+            } else {
+                c.escape_default().to_string()
+            }
+        })
+        .collect()
 }
 
 /// Pad a string with spaces to `width` chars, or truncate (with a trailing `…`)
@@ -235,7 +269,34 @@ fn pad_or_truncate(s: &str, width: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{exit_code_from_stored, pad_or_truncate, split_lines};
+    use super::{exit_code_from_stored, pad_or_truncate, sanitize_for_display, split_lines};
+
+    // WR-01: the filtered ("safe view") column must neutralize terminal-control
+    // sequences. ESC (0x1B) starts every CSI/OSC escape; a raw build log could
+    // embed cursor moves / title rewrites / OSC 52 clipboard writes that the
+    // "safe view" claim says are not present.
+    #[test]
+    fn sanitize_escapes_ansi_and_control_bytes() {
+        // CSI red color + reset around text.
+        let injected = "\x1b[31mERR\x1b[0m";
+        let safe = sanitize_for_display(injected);
+        assert!(!safe.contains('\x1b'), "ESC must not survive: {safe:?}");
+        assert!(safe.contains("ERR"));
+        // OSC 52 clipboard write (ESC ] 52 ; ... BEL).
+        let osc = "\x1b]52;c;ZXZpbA==\x07";
+        let safe_osc = sanitize_for_display(osc);
+        assert!(!safe_osc.contains('\x1b'));
+        assert!(!safe_osc.contains('\x07'));
+    }
+
+    // WR-01: legitimate text — including tabs and non-ASCII — must pass through
+    // unchanged so the safe view stays readable.
+    #[test]
+    fn sanitize_preserves_printable_and_tab() {
+        assert_eq!(sanitize_for_display("hello\tworld"), "hello\tworld");
+        assert_eq!(sanitize_for_display("café — 日本語"), "café — 日本語");
+        assert_eq!(sanitize_for_display(""), "");
+    }
 
     // WR-04: in-range values pass through unchanged so the zero-vs-nonzero
     // branch selection (success vs on_error) is preserved exactly.
