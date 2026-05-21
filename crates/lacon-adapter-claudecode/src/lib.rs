@@ -11,6 +11,7 @@
 
 pub mod chain;
 pub mod protocol;
+pub mod quote;
 pub mod tui;
 
 /// The decision `run_hook` returns to the binary entry point.
