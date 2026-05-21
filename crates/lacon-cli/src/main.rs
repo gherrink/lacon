@@ -12,7 +12,9 @@ fn main() -> anyhow::Result<()> {
         CliCommand::Run { rule, argv } => commands::run::execute(rule, argv)?,
         CliCommand::Validate { path } => commands::validate::execute(&path)?,
         CliCommand::Init => commands::init::execute()?,
-        CliCommand::Stats { .. } => commands::stats::execute()?,
+        CliCommand::Stats { project, since, rule } => {
+            commands::stats::execute(project, since, rule)?
+        }
         CliCommand::Explain { .. } => commands::explain::execute()?,
         CliCommand::Doctor => commands::doctor::execute()?,
     };
