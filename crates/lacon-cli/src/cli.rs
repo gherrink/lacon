@@ -36,6 +36,9 @@ pub enum CliCommand {
     /// Show top offenders, bypass rates, unmatched commands.
     /// (Phase 4 implementation — Phase 1 stub.)
     Stats {
+        /// Filter to one project. Normalized to an absolute path (`.`, relative
+        /// paths, and trailing slashes are accepted) and matched verbatim
+        /// against the stored project path; symlinks are NOT resolved.
         #[arg(long)]
         project: Option<PathBuf>,
         #[arg(long)]

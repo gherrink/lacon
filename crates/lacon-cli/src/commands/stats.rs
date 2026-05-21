@@ -47,7 +47,16 @@ pub fn execute(project: Option<PathBuf>, since: Option<String>, rule: Option<Str
         },
     };
 
-    let project_str: Option<String> = project.as_ref().map(|p| p.to_string_lossy().into_owned());
+    // WR-03: the stored `project_path` is the absolute, logical cwd captured at
+    // run time (`std::env::current_dir()`), and the query binds `--project` as a
+    // byte-exact `project_path = ?N`. Without normalization, `--project .`,
+    // `./`, a relative path, or a trailing slash silently mismatch and every
+    // section reports "no data yet" with exit 0 — a quiet correctness trap.
+    // Lexically absolutize + strip a trailing separator so these common forms
+    // line up with the stored absolute path. We deliberately do NOT
+    // `canonicalize` (resolve symlinks): the write side stores the *logical*
+    // cwd, so symlink resolution here would diverge from it.
+    let project_str: Option<String> = project.as_ref().map(|p| normalize_project(p));
     let project_ref: Option<&str> = project_str.as_deref();
     let rule_ref: Option<&str> = rule.as_deref();
     let filtered = cutoff_ms.is_some() || project_ref.is_some() || rule_ref.is_some();
@@ -198,7 +207,48 @@ pub fn execute(project: Option<PathBuf>, since: Option<String>, rule: Option<Str
         }
     }
 
+    // WR-03: when a `--project` filter matched nothing in any section, the
+    // byte-exact match likely missed a path-form difference rather than there
+    // being genuinely no data. Surface a hint (to stderr, so stdout stays
+    // snapshot-stable) instead of a silent all-empty report. We compare against
+    // the normalized value we actually bound so the user sees what was matched.
+    if project_ref.is_some()
+        && unmatched.is_empty()
+        && f_offenders.is_empty()
+        && bypass.is_empty()
+        && savings.is_empty()
+    {
+        if let Some(p) = project_ref {
+            eprintln!(
+                "lacon stats: hint: --project matched no rows. It must equal the \
+                 stored absolute project path verbatim (matched against `{p}`). \
+                 Try the absolute path printed under \"Per-project savings\" when \
+                 run without a filter."
+            );
+        }
+    }
+
     Ok(0)
+}
+
+/// WR-03: normalize a `--project` argument to line up with the stored
+/// `project_path` (the absolute, logical cwd from `std::env::current_dir()`).
+///
+/// Makes the path absolute and lexically resolves `.`/`..` via
+/// `std::path::absolute` (no filesystem access, no symlink resolution — matching
+/// the write side's logical cwd), then strips a single trailing separator so
+/// `/home/me/proj/` and `/home/me/proj` compare equal. On the rare error path
+/// (`absolute` only fails on an empty path or unavailable cwd) we fall back to
+/// the raw string so behavior never regresses below the pre-fix exact match.
+fn normalize_project(p: &std::path::Path) -> String {
+    let abs = std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf());
+    let s = abs.to_string_lossy();
+    // Strip a single trailing path separator (but never reduce the root "/").
+    let trimmed = s
+        .strip_suffix(std::path::MAIN_SEPARATOR)
+        .filter(|t| !t.is_empty())
+        .unwrap_or(&s);
+    trimmed.to_string()
 }
 
 /// Parse a relative `--since` value into a window in milliseconds.
@@ -248,7 +298,45 @@ fn print_empty() {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_since;
+    use super::{normalize_project, parse_since};
+    use std::path::{Path, MAIN_SEPARATOR};
+
+    // WR-03: an already-absolute path is returned unchanged (the common case
+    // must keep matching the stored absolute project_path).
+    #[test]
+    fn normalize_project_absolute_unchanged() {
+        let abs = if MAIN_SEPARATOR == '/' {
+            "/home/me/proj"
+        } else {
+            r"C:\home\me\proj"
+        };
+        assert_eq!(normalize_project(Path::new(abs)), abs);
+    }
+
+    // WR-03: a single trailing separator is stripped so `proj/` == `proj`.
+    #[test]
+    fn normalize_project_strips_trailing_separator() {
+        let with_slash = format!("{}home{}me{}proj{}", MAIN_SEPARATOR, MAIN_SEPARATOR, MAIN_SEPARATOR, MAIN_SEPARATOR);
+        let without = format!("{}home{}me{}proj", MAIN_SEPARATOR, MAIN_SEPARATOR, MAIN_SEPARATOR);
+        assert_eq!(normalize_project(Path::new(&with_slash)), without);
+    }
+
+    // WR-03: `.` resolves to the current dir (absolute), so `--project .` lines
+    // up with the stored cwd instead of silently mismatching.
+    #[test]
+    fn normalize_project_dot_becomes_absolute_cwd() {
+        let cwd = std::env::current_dir().unwrap();
+        let expected = cwd.to_string_lossy().to_string();
+        // current_dir() has no trailing separator, so no stripping is involved.
+        assert_eq!(normalize_project(Path::new(".")), expected);
+    }
+
+    // WR-03: the root path must not be reduced to empty by the trailing-strip.
+    #[cfg(unix)]
+    #[test]
+    fn normalize_project_root_preserved() {
+        assert_eq!(normalize_project(Path::new("/")), "/");
+    }
 
     #[test]
     fn parse_since_days_hours_minutes() {
