@@ -125,6 +125,51 @@ impl Tracker {
     }
 }
 
+/// Open an existing `history.db` **read-only** for the Phase 4 query commands
+/// (`stats`, `explain`, `doctor`). This is the READ counterpart of
+/// [`Tracker::open`] (the WRITE path) and is a free function — not an
+/// `impl Tracker` method — because a read needs no `Tracker` state (D-01).
+///
+/// # Non-mutating invariant (D-02, threat T-04-02)
+/// Query commands NEVER migrate, prune, or INSERT. This helper deliberately:
+/// - opens with `SQLITE_OPEN_READ_ONLY` (no `SQLITE_OPEN_CREATE`), so it
+///   returns an `Err` on a non-existent path rather than creating the file
+///   (D-03: the caller checks existence first and treats "absent" as the
+///   normal fresh-user state, not an error);
+/// - applies ONLY the safe pragmas — `busy_timeout` and `foreign_keys` —
+///   mirroring [`apply_connection_pragmas`] steps (1) and (2);
+/// - DELIBERATELY OMITS step (3) `PRAGMA journal_mode=WAL`, since that is a
+///   write and errors on a read-only handle (Pitfall 1, 04-RESEARCH.md).
+///
+/// # Wave-0 spike outcome (Plan 04-01 Task 1)
+/// `tests/wave0_smoke.rs::smoke_readonly_open_of_wal_db` empirically confirmed
+/// that strict `SQLITE_OPEN_READ_ONLY` SUCCEEDS against a WAL `history.db`
+/// created by `Tracker::open` on this build (rusqlite 0.39 / libsqlite3-sys
+/// 0.37, Linux/ext4, 2026-05-22). The documented D-02 fallback
+/// (`SQLITE_OPEN_READ_WRITE` without `CREATE`, still no migrate/no prune) was
+/// therefore NOT needed; should a future platform fail the strict open, switch
+/// the open flags here and keep the no-write invariant.
+///
+/// # Errors
+/// - `TrackingError::Sqlite` if the file does not exist or the open fails.
+pub fn open_readonly(db_path: &Path) -> Result<Connection, TrackingError> {
+    // Strict read-only: no CREATE flag → absent file is an Err, never created.
+    let conn = Connection::open_with_flags(
+        db_path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+
+    // Safe pragmas only (apply_connection_pragmas steps 1 & 2). NO WAL write.
+    // (1) busy_timeout — harmless on a read-only handle; matches the write path.
+    conn.busy_timeout(Duration::from_millis(200))?;
+    // (2) foreign_keys=ON — irrelevant for pure reads, but kept for parity so a
+    //     read handle never silently behaves differently from the write handle.
+    conn.set_db_config(DbConfig::SQLITE_DBCONFIG_ENABLE_FKEY, true)?;
+    // (3) journal_mode=WAL is INTENTIONALLY OMITTED here — it is a write.
+
+    Ok(conn)
+}
+
 /// Apply the 3 per-connection pragmas in the documented order.
 /// Public-in-crate so prune.rs and Plan 04's tests can sanity-check
 /// the connection state without re-deriving the contract.
