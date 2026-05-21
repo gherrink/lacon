@@ -277,6 +277,119 @@ fn pipe_in_segment_preserved_not_split() {
     );
 }
 
+/// CR-01 regression: a matched segment containing a redirection MUST pass
+/// through byte-exact (NOT wrapped). Wrapping would re-quote `>` as a literal
+/// argument, dropping the redirect and silently losing the user's output file.
+#[test]
+fn redirection_segment_passes_through_unwrapped() {
+    let dir = tempfile::tempdir().unwrap();
+    write_rule(dir.path(), ECHO_RULE); // would match `echo`, but redirect blocks wrap
+    let payload = bash_payload(&dir.path().to_string_lossy(), "echo hi > out.txt");
+    let output = run_hook_with_input(&payload);
+    assert!(output.status.success());
+    // No rewrite happens (nothing wrappable) → cheapest pass-through, empty stdout.
+    assert!(
+        output.stdout.is_empty(),
+        "redirect segment must not be wrapped; expected pass-through, got {:?}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+/// CR-02 regression: a matched segment containing command substitution MUST pass
+/// through byte-exact. Wrapping would single-quote `$(whoami)`, neutralizing the
+/// substitution the user intended to execute.
+#[test]
+fn command_substitution_segment_passes_through_unwrapped() {
+    let dir = tempfile::tempdir().unwrap();
+    write_rule(dir.path(), ECHO_RULE);
+    let payload = bash_payload(&dir.path().to_string_lossy(), "echo $(whoami)");
+    let output = run_hook_with_input(&payload);
+    assert!(output.status.success());
+    assert!(
+        output.stdout.is_empty(),
+        "command-substitution segment must not be wrapped, got {:?}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+/// CR-03 regression: a matched segment containing a shell comment MUST pass
+/// through byte-exact. Wrapping would turn `# do thing` into literal arguments,
+/// changing the program's output.
+#[test]
+fn comment_segment_passes_through_unwrapped() {
+    let dir = tempfile::tempdir().unwrap();
+    write_rule(dir.path(), ECHO_RULE);
+    let payload = bash_payload(&dir.path().to_string_lossy(), "echo hi # do thing");
+    let output = run_hook_with_input(&payload);
+    assert!(output.status.success());
+    assert!(
+        output.stdout.is_empty(),
+        "comment segment must not be wrapped, got {:?}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+/// CR-04 regression: `${...}` parameter expansion with a chain operator inside
+/// the braces must NOT mis-split into a broken two-command chain. The whole
+/// command stays one segment and (being unwrappable) passes through byte-exact.
+#[test]
+fn param_expansion_with_chain_op_not_missplit() {
+    let dir = tempfile::tempdir().unwrap();
+    write_rule(dir.path(), ECHO_RULE);
+    let payload = bash_payload(&dir.path().to_string_lossy(), "echo ${x:-a && b}");
+    let output = run_hook_with_input(&payload);
+    assert!(output.status.success());
+    // Single unwrappable segment → pass-through. Crucially: stdout must NOT
+    // contain a `b}` second top-level command (the old mis-split bug).
+    assert!(
+        output.stdout.is_empty(),
+        "param-expansion command must not be mis-split/wrapped, got {:?}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+/// WR-02 regression: backslash-escaped whitespace forms one argument in bash;
+/// the segment must pass through byte-exact rather than be re-tokenized into two.
+#[test]
+fn escaped_whitespace_segment_passes_through_unwrapped() {
+    let dir = tempfile::tempdir().unwrap();
+    write_rule(dir.path(), ECHO_RULE);
+    let payload = bash_payload(&dir.path().to_string_lossy(), "echo a\\ b");
+    let output = run_hook_with_input(&payload);
+    assert!(output.status.success());
+    assert!(
+        output.stdout.is_empty(),
+        "escaped-whitespace segment must not be wrapped, got {:?}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+/// CR-01..CR-04 boundary: an unwrappable segment in a chain is preserved
+/// byte-exact while a sibling matched segment is still wrapped — proving the
+/// guard is per-segment, not whole-chain.
+#[test]
+fn unwrappable_segment_preserved_while_sibling_wrapped() {
+    let dir = tempfile::tempdir().unwrap();
+    write_rule(dir.path(), ECHO_RULE);
+    let payload = bash_payload(
+        &dir.path().to_string_lossy(),
+        "echo hi > out.txt && echo done",
+    );
+    let output = run_hook_with_input(&payload);
+    assert!(output.status.success());
+    let cmd = updated_command(&output);
+    // First (redirect) segment preserved byte-exact, NOT wrapped.
+    assert!(
+        cmd.starts_with("echo hi > out.txt && "),
+        "redirect segment preserved verbatim and unwrapped: {cmd}"
+    );
+    // Second segment wrapped.
+    assert!(
+        cmd.contains("lacon run --rule echo-rule -- echo done"),
+        "second segment wrapped: {cmd}"
+    );
+}
+
 /// RESEARCH Q4 RESOLVED 2026-05-16: a non-Bash tool name passes through (defensive
 /// guard for a matcher-widened settings.json). HookInput does not
 /// `deny_unknown_fields`, so a different `tool_input` shape still parses as long

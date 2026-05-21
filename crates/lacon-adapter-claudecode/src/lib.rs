@@ -174,7 +174,18 @@ pub fn run_hook(input: protocol::HookInput) -> anyhow::Result<HookOutcome> {
         // would become a literal argument and destroy the pipeline. Per
         // docs/specs/chained-commands.md:17 (pipes out of v1 filter scope), keep
         // the segment byte-exact so the shell still sees the real `|`.
-        if crate::chain::has_top_level_pipe(&segment.text) {
+        //
+        // The same hazard applies to any other top-level construct the lossy
+        // `argv_for_resolution` tokenizer + `quote_for_shell` round-trip cannot
+        // reproduce — redirections (CR-01), command/process substitution (CR-02),
+        // shell comments (CR-03), `${...}` expansion, and escaped whitespace
+        // (WR-02). Wrapping those silently changes the command's runtime
+        // semantics (dropped redirect, neutralized substitution, comment turned
+        // into literal args). `has_unwrappable_construct` detects them via the
+        // same chain.rs DFA; such segments pass through byte-exact.
+        if crate::chain::has_top_level_pipe(&segment.text)
+            || crate::chain::has_unwrappable_construct(&segment.text)
+        {
             rendered.push(segment.text.clone());
             continue;
         }

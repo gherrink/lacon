@@ -246,6 +246,35 @@ fn s13_lacon_disable_whole_chain_bypass() {
     assert_reassembles(input, &segs);
 }
 
+// ── S14: `${...}` parameter expansion is opaque — chain op inside braces does ──
+//        NOT split (CR-04 regression; docs/specs/chained-commands.md:15).
+#[test]
+fn s14_param_expansion_default_value_single_segment() {
+    let input = "echo ${x:-a && b}";
+    let segs = split(input);
+    assert_eq!(
+        segs.len(),
+        1,
+        "a `&&` inside ${{...}} must not split the command"
+    );
+    assert_eq!(segs[0].text, "echo ${x:-a && b}");
+    assert_eq!(segs[0].trailing_op, None);
+    assert_eq!(segs[0].trailing_op_span, None);
+    assert_reassembles(input, &segs);
+}
+
+// ── S14b: `${...}` closes, then a real top-level `&&` still splits ────────────
+#[test]
+fn s14b_param_expansion_then_real_chain_op_splits() {
+    let input = "echo ${x:-a} && b";
+    let segs = split(input);
+    assert_eq!(segs.len(), 2);
+    assert_eq!(segs[0].text, "echo ${x:-a}");
+    assert_eq!(segs[0].trailing_op, Some(ChainOp::AndAnd));
+    assert_eq!(segs[1].text, "b");
+    assert_reassembles(input, &segs);
+}
+
 // ── Pathological inputs — linear-time, no panic ───────────────────────────────
 #[test]
 fn pathological_nested_subshells_no_panic() {

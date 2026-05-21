@@ -64,6 +64,11 @@ struct SplitState {
     cmd_sub_depth: u32,
     backtick_depth: u32,
     process_sub_depth: u32,
+    /// `${...}` parameter-expansion brace depth. Per
+    /// `docs/specs/chained-commands.md:15` `${...}` is a top-level-suppressing
+    /// opaque construct, so a `&&`/`||`/`;` inside the braces (e.g. a `${x:-a &&
+    /// b}` default value) must NOT split (CR-04).
+    param_expansion_depth: u32,
     in_heredoc: Option<HeredocCtx>,
     escape_pending: bool,
 }
@@ -77,6 +82,7 @@ impl SplitState {
             cmd_sub_depth: 0,
             backtick_depth: 0,
             process_sub_depth: 0,
+            param_expansion_depth: 0,
             in_heredoc: None,
             escape_pending: false,
         }
@@ -91,11 +97,12 @@ impl SplitState {
             && self.cmd_sub_depth == 0
             && self.backtick_depth == 0
             && self.process_sub_depth == 0
+            && self.param_expansion_depth == 0
             && self.in_heredoc.is_none()
     }
 
     /// True inside ANY opaque construct (quote / cmd-sub / subshell / backtick /
-    /// process-sub / heredoc) — toggles below must respect this.
+    /// process-sub / `${...}` / heredoc) — toggles below must respect this.
     fn in_opaque(&self) -> bool {
         self.in_single_quote
             || self.in_double_quote
@@ -103,6 +110,7 @@ impl SplitState {
             || self.cmd_sub_depth > 0
             || self.backtick_depth > 0
             || self.process_sub_depth > 0
+            || self.param_expansion_depth > 0
             || self.in_heredoc.is_some()
     }
 }
@@ -211,28 +219,54 @@ pub fn split_chain(input: &str) -> Vec<Segment> {
             continue;
         }
 
-        // 7. `$(` opens command substitution (lookahead).
+        // 7. `${` opens parameter expansion (lookahead). Per
+        //    `docs/specs/chained-commands.md:15` this is opaque: a `&&`/`||`/`;`
+        //    inside `${x:-a && b}` must not split (CR-04). Checked BEFORE `$(`.
+        if b == b'$' && i + 1 < n && bytes[i + 1] == b'{' {
+            state.param_expansion_depth += 1;
+            i += 2;
+            continue;
+        }
+
+        // 8. `$(` opens command substitution (lookahead).
         if b == b'$' && i + 1 < n && bytes[i + 1] == b'(' {
             state.cmd_sub_depth += 1;
             i += 2;
             continue;
         }
 
-        // 8. Process substitution `<(` / `>(` (lookahead) opens an opaque region.
+        // 9. Inside a `${...}` expansion, `{` nests deeper and `}` closes one
+        //    level; suppress chain operators while depth > 0. A `${` opener is
+        //    handled above, so a bare `{` here is a nested brace (e.g. brace
+        //    expansion inside the expansion word) — track it to find the match.
+        if state.param_expansion_depth > 0 {
+            if b == b'{' {
+                state.param_expansion_depth += 1;
+                i += 1;
+                continue;
+            }
+            if b == b'}' {
+                state.param_expansion_depth -= 1;
+                i += 1;
+                continue;
+            }
+        }
+
+        // 10. Process substitution `<(` / `>(` (lookahead) opens an opaque region.
         if (b == b'<' || b == b'>') && i + 1 < n && bytes[i + 1] == b'(' {
             state.process_sub_depth += 1;
             i += 2;
             continue;
         }
 
-        // 9. Here-string `<<<` is single-token opaque (NOT a heredoc). Consume the
+        // 11. Here-string `<<<` is single-token opaque (NOT a heredoc). Consume the
         //    three bytes; the following word stays in the current segment.
         if b == b'<' && i + 2 < n && bytes[i + 1] == b'<' && bytes[i + 2] == b'<' {
             i += 3;
             continue;
         }
 
-        // 10. Heredoc opener `<<DELIM` / `<<-DELIM` / `<<'DELIM'` / `<<"DELIM"`.
+        // 12. Heredoc opener `<<DELIM` / `<<-DELIM` / `<<'DELIM'` / `<<"DELIM"`.
         if b == b'<' && i + 1 < n && bytes[i + 1] == b'<' && !state.in_double_quote {
             let mut j = i + 2;
             let strip_tabs = j < n && bytes[j] == b'-';
@@ -256,14 +290,14 @@ pub fn split_chain(input: &str) -> Vec<Segment> {
             continue;
         }
 
-        // 11. Subshell `(` — but ONLY when not preceded by `$` (already handled).
+        // 13. Subshell `(` — but ONLY when not preceded by `$` (already handled).
         if b == b'(' && !state.in_double_quote {
             state.subshell_depth += 1;
             i += 1;
             continue;
         }
 
-        // 12. Closing `)` — decrement the highest-precedence open depth
+        // 14. Closing `)` — decrement the highest-precedence open depth
         //     (cmd_sub > process_sub > subshell) per 03-RESEARCH.md:503.
         if b == b')' && !state.in_double_quote {
             if state.cmd_sub_depth > 0 {
@@ -277,7 +311,7 @@ pub fn split_chain(input: &str) -> Vec<Segment> {
             continue;
         }
 
-        // 13. Split operators — only at top level, never inside any opaque region.
+        // 15. Split operators — only at top level, never inside any opaque region.
         if state.at_top_level() {
             // `&&` (2-byte) — but NOT a single `&` (background) which we leave verbatim.
             if b == b'&' && i + 1 < n && bytes[i + 1] == b'&' {
@@ -394,10 +428,29 @@ pub fn has_top_level_pipe(segment: &str) -> bool {
             i += 1;
             continue;
         }
+        // `${...}` parameter expansion is opaque (CR-04): mirror split_chain so a
+        // `|` inside `${x:-a | b}` is not reported as a top-level pipe.
+        if b == b'$' && i + 1 < n && bytes[i + 1] == b'{' {
+            state.param_expansion_depth += 1;
+            i += 2;
+            continue;
+        }
         if b == b'$' && i + 1 < n && bytes[i + 1] == b'(' {
             state.cmd_sub_depth += 1;
             i += 2;
             continue;
+        }
+        if state.param_expansion_depth > 0 {
+            if b == b'{' {
+                state.param_expansion_depth += 1;
+                i += 1;
+                continue;
+            }
+            if b == b'}' {
+                state.param_expansion_depth -= 1;
+                i += 1;
+                continue;
+            }
         }
         if (b == b'<' || b == b'>') && i + 1 < n && bytes[i + 1] == b'(' {
             state.process_sub_depth += 1;
@@ -452,6 +505,178 @@ pub fn has_top_level_pipe(segment: &str) -> bool {
                 return true;
             }
         }
+        i += 1;
+    }
+    false
+}
+
+/// True if `segment` contains a top-level shell construct that the
+/// lossy `lacon run -- <argv>` wrap CANNOT reproduce, so the segment MUST pass
+/// through byte-exact instead of being re-tokenized + re-quoted (CR-01..CR-03,
+/// WR-02).
+///
+/// The orchestrator (lib.rs) resolves rules against `argv_for_resolution`, a
+/// whitespace tokenizer that only models single/double quotes. Anything else —
+/// redirections, command/process substitution, comments, `${...}` expansion,
+/// escaped whitespace — survives tokenization as plain bytes and is then
+/// single-quoted by `quote_for_shell`, which changes the command's runtime
+/// semantics (a redirect is dropped, a substitution is neutralized, a comment
+/// becomes literal args, an escaped space splits one arg into two). The Runner
+/// executes `Command::new(argv[0]).args(...)` with NO shell hop, so there is no
+/// place to faithfully re-emit these constructs. The conservative posture
+/// (matching the existing `has_top_level_pipe` pipe guard and
+/// `docs/specs/chained-commands.md:17`) is to leave such a segment untouched so
+/// the shell still sees the real construct.
+///
+/// Detected at top level (outside quotes / cmd-sub / subshell / backtick /
+/// process-sub / `${...}` / heredoc):
+/// - command substitution `$(...)` and backticks `` `...` ``
+/// - process substitution `<(...)` / `>(...)`
+/// - parameter expansion `${...}`
+/// - redirections: any top-level `<` or `>` (covers `>`, `>>`, `<`, `2>`,
+///   `&>`, `>&`, here-strings `<<<`, heredocs `<<DELIM`)
+/// - a top-level `#` comment (start-of-segment or preceded by whitespace)
+/// - a top-level unescaped backslash (escaped whitespace would re-tokenize wrong)
+///
+/// Constructs that ARE faithfully reproduced (single/double-quoted words, glued
+/// quotes) do NOT report true. A top-level pipe is reported separately by
+/// [`has_top_level_pipe`]; this predicate deliberately ignores `|` so callers can
+/// keep the two guards independent (and so the existing pipe tests stay valid).
+pub fn has_unwrappable_construct(segment: &str) -> bool {
+    let bytes = segment.as_bytes();
+    let n = bytes.len();
+    let mut state = SplitState::new();
+    let mut i = 0usize;
+    // Whether the previous *consumed* byte (at top level) was whitespace or
+    // start-of-segment — needed so a `#` only starts a comment in word position
+    // (bash: `echo a#b` is one literal token, `echo a #b` is `echo a` + comment).
+    let mut prev_was_ws_or_start = true;
+
+    while i < n {
+        let b = bytes[i];
+
+        if state.escape_pending {
+            state.escape_pending = false;
+            i += 1;
+            prev_was_ws_or_start = false;
+            continue;
+        }
+        if let Some(ctx) = &state.in_heredoc {
+            if b == b'\n' {
+                let line_start = i + 1;
+                let mut line_end = line_start;
+                while line_end < n && bytes[line_end] != b'\n' {
+                    line_end += 1;
+                }
+                let mut content_start = line_start;
+                if ctx.strip_tabs {
+                    while content_start < line_end && bytes[content_start] == b'\t' {
+                        content_start += 1;
+                    }
+                }
+                if segment[content_start..line_end] == ctx.delimiter {
+                    state.in_heredoc = None;
+                    i = line_end;
+                    continue;
+                }
+            }
+            i += 1;
+            continue;
+        }
+        // A top-level backslash (outside single quotes) escapes the next byte.
+        // `echo a\ b` is one argument in bash but `argv_for_resolution` would
+        // split it; treat it as unwrappable (WR-02).
+        if b == b'\\' && !state.in_single_quote {
+            if state.at_top_level() {
+                return true;
+            }
+            state.escape_pending = true;
+            i += 1;
+            prev_was_ws_or_start = false;
+            continue;
+        }
+        if b == b'\'' && !state.in_double_quote {
+            state.in_single_quote = !state.in_single_quote;
+            i += 1;
+            prev_was_ws_or_start = false;
+            continue;
+        }
+        if b == b'"' && !state.in_single_quote {
+            state.in_double_quote = !state.in_double_quote;
+            i += 1;
+            prev_was_ws_or_start = false;
+            continue;
+        }
+        if state.in_single_quote {
+            i += 1;
+            prev_was_ws_or_start = false;
+            continue;
+        }
+        // Backtick command substitution (CR-02).
+        if b == b'`' {
+            return true;
+        }
+        // `${...}` parameter expansion (CR-02 family / spec opaque construct).
+        if b == b'$' && i + 1 < n && bytes[i + 1] == b'{' {
+            if state.at_top_level() {
+                return true;
+            }
+            state.param_expansion_depth += 1;
+            i += 2;
+            continue;
+        }
+        // `$(...)` command substitution (CR-02).
+        if b == b'$' && i + 1 < n && bytes[i + 1] == b'(' {
+            if state.at_top_level() {
+                return true;
+            }
+            state.cmd_sub_depth += 1;
+            i += 2;
+            continue;
+        }
+        if state.param_expansion_depth > 0 {
+            if b == b'{' {
+                state.param_expansion_depth += 1;
+                i += 1;
+                continue;
+            }
+            if b == b'}' {
+                state.param_expansion_depth -= 1;
+                i += 1;
+                continue;
+            }
+        }
+        // Redirections + process substitution: any top-level `<` or `>` is a
+        // construct the argv form cannot reproduce (CR-01). This covers `>`,
+        // `>>`, `<`, here-strings `<<<`, heredocs `<<DELIM`, process-sub
+        // `<(...)`/`>(...)`, and (with a preceding fd or `&`) `2>`, `&>`, `>&`.
+        if (b == b'<' || b == b'>') && state.at_top_level() {
+            return true;
+        }
+        // Subshell / cmd-sub / process-sub depth tracking so a top-level test
+        // above is not tripped by an inner construct.
+        if b == b'(' && !state.in_double_quote {
+            state.subshell_depth += 1;
+            i += 1;
+            continue;
+        }
+        if b == b')' && !state.in_double_quote {
+            if state.cmd_sub_depth > 0 {
+                state.cmd_sub_depth -= 1;
+            } else if state.process_sub_depth > 0 {
+                state.process_sub_depth -= 1;
+            } else if state.subshell_depth > 0 {
+                state.subshell_depth -= 1;
+            }
+            i += 1;
+            continue;
+        }
+        // A top-level `#` in word position starts a comment (CR-03).
+        if b == b'#' && state.at_top_level() && prev_was_ws_or_start {
+            return true;
+        }
+        // Track word-position for the `#` test above.
+        prev_was_ws_or_start = b == b' ' || b == b'\t' || b == b'\n';
         i += 1;
     }
     false
@@ -619,5 +844,101 @@ mod tests {
         // A single segment never holds a top-level `||` (split_chain would have
         // split), but guard the predicate anyway.
         assert!(!has_top_level_pipe("a || b"));
+    }
+
+    // ── CR-04: `${...}` parameter expansion is opaque in the splitter ──────────
+
+    #[test]
+    fn param_expansion_default_value_with_chain_op_is_single_segment() {
+        // `echo ${x:-a && b}` is ONE command (a default-value expansion), not a
+        // broken two-segment chain. The `&&` inside the braces must not split.
+        let input = "echo ${x:-a && b}";
+        let segs = split_chain(input);
+        assert_eq!(segs.len(), 1);
+        assert_eq!(segs[0].text, "echo ${x:-a && b}");
+        assert_eq!(segs[0].trailing_op, None);
+    }
+
+    #[test]
+    fn param_expansion_with_semicolon_is_single_segment() {
+        let segs = split_chain("echo ${x:-a; b}");
+        assert_eq!(segs.len(), 1);
+        assert_eq!(segs[0].text, "echo ${x:-a; b}");
+    }
+
+    #[test]
+    fn param_expansion_closes_then_real_chain_op_splits() {
+        // After the `}` closes the expansion, a real top-level `&&` still splits.
+        let segs = split_chain("echo ${x:-a} && b");
+        assert_eq!(segs.len(), 2);
+        assert_eq!(segs[0].text, "echo ${x:-a}");
+        assert_eq!(segs[0].trailing_op, Some(ChainOp::AndAnd));
+        assert_eq!(segs[1].text, "b");
+    }
+
+    #[test]
+    fn has_top_level_pipe_ignores_pipe_in_param_expansion() {
+        assert!(!has_top_level_pipe("echo ${x:-a | b}"));
+    }
+
+    // ── CR-01..CR-03 / WR-02: has_unwrappable_construct ───────────────────────
+
+    #[test]
+    fn unwrappable_detects_redirections() {
+        assert!(has_unwrappable_construct("echo hi > out.txt"));
+        assert!(has_unwrappable_construct("echo hi >> out.txt"));
+        assert!(has_unwrappable_construct("cat < in.txt"));
+        assert!(has_unwrappable_construct("cmd 2> err.log"));
+        assert!(has_unwrappable_construct("cmd &> all.log"));
+        assert!(has_unwrappable_construct("cat <<<word"));
+    }
+
+    #[test]
+    fn unwrappable_detects_command_substitution() {
+        assert!(has_unwrappable_construct("echo $(whoami)"));
+        assert!(has_unwrappable_construct("echo `whoami`"));
+    }
+
+    #[test]
+    fn unwrappable_detects_process_substitution() {
+        assert!(has_unwrappable_construct("diff <(a) <(b)"));
+    }
+
+    #[test]
+    fn unwrappable_detects_param_expansion() {
+        assert!(has_unwrappable_construct("echo ${HOME}"));
+        assert!(has_unwrappable_construct("echo ${x:-default}"));
+    }
+
+    #[test]
+    fn unwrappable_detects_top_level_comment() {
+        assert!(has_unwrappable_construct("echo hi # do thing"));
+        assert!(has_unwrappable_construct("# whole line comment"));
+    }
+
+    #[test]
+    fn unwrappable_detects_escaped_whitespace() {
+        // `echo a\ b` is one argument in bash; argv_for_resolution would split it.
+        assert!(has_unwrappable_construct("echo a\\ b"));
+    }
+
+    #[test]
+    fn unwrappable_ignores_plain_commands() {
+        assert!(!has_unwrappable_construct("echo hi"));
+        assert!(!has_unwrappable_construct("ls -la /tmp"));
+        assert!(!has_unwrappable_construct("git commit -m \"msg\""));
+        // A `#` glued mid-token is NOT a comment (word position matters).
+        assert!(!has_unwrappable_construct("echo a#b"));
+        // A `$` not followed by `{`/`(` is an ordinary literal (e.g. `$var`,
+        // which argv_for_resolution preserves and quote_for_shell quotes safely).
+        assert!(!has_unwrappable_construct("echo $var"));
+    }
+
+    #[test]
+    fn unwrappable_ignores_constructs_inside_single_quotes() {
+        // Inside single quotes everything is literal and faithfully reproduced.
+        assert!(!has_unwrappable_construct("echo '> not a redirect'"));
+        assert!(!has_unwrappable_construct("echo '$(not a sub)'"));
+        assert!(!has_unwrappable_construct("echo '# not a comment'"));
     }
 }
