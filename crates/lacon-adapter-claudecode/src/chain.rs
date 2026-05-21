@@ -561,28 +561,14 @@ pub fn has_unwrappable_construct(segment: &str) -> bool {
             prev_was_ws_or_start = false;
             continue;
         }
-        if let Some(ctx) = &state.in_heredoc {
-            if b == b'\n' {
-                let line_start = i + 1;
-                let mut line_end = line_start;
-                while line_end < n && bytes[line_end] != b'\n' {
-                    line_end += 1;
-                }
-                let mut content_start = line_start;
-                if ctx.strip_tabs {
-                    while content_start < line_end && bytes[content_start] == b'\t' {
-                        content_start += 1;
-                    }
-                }
-                if segment[content_start..line_end] == ctx.delimiter {
-                    state.in_heredoc = None;
-                    i = line_end;
-                    continue;
-                }
-            }
-            i += 1;
-            continue;
-        }
+        // NOTE (WR-02): unlike `split_chain` / `has_top_level_pipe`, this predicate
+        // has NO heredoc-body or process-sub opacity machinery. The top-level
+        // `<`/`>` check below short-circuits to `true` for ANY redirection byte —
+        // which subsumes heredoc openers (`<<DELIM`), here-strings (`<<<`), and
+        // process-sub openers (`<(`/`>(`) — before opacity could ever matter. So
+        // `state.in_heredoc` is never set and `state.process_sub_depth` is never
+        // incremented here; carrying the heredoc-body block or a process-sub
+        // decrement arm would be dead code in a security-relevant predicate.
         // A top-level backslash (outside single quotes) escapes the next byte.
         // `echo a\ b` is one argument in bash but `argv_for_resolution` would
         // split it; treat it as unwrappable (WR-02).
@@ -653,8 +639,10 @@ pub fn has_unwrappable_construct(segment: &str) -> bool {
         if (b == b'<' || b == b'>') && state.at_top_level() {
             return true;
         }
-        // Subshell / cmd-sub / process-sub depth tracking so a top-level test
-        // above is not tripped by an inner construct.
+        // Subshell / cmd-sub depth tracking so a top-level test above is not
+        // tripped by an inner construct. (No process-sub arm: a `<(`/`>(` opener
+        // is caught by the top-level `<`/`>` short-circuit above, so
+        // `process_sub_depth` is never incremented here — WR-02.)
         if b == b'(' && !state.in_double_quote {
             state.subshell_depth += 1;
             i += 1;
@@ -663,8 +651,6 @@ pub fn has_unwrappable_construct(segment: &str) -> bool {
         if b == b')' && !state.in_double_quote {
             if state.cmd_sub_depth > 0 {
                 state.cmd_sub_depth -= 1;
-            } else if state.process_sub_depth > 0 {
-                state.process_sub_depth -= 1;
             } else if state.subshell_depth > 0 {
                 state.subshell_depth -= 1;
             }
