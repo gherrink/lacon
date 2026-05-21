@@ -295,6 +295,144 @@ impl RuleLoader {
     }
 }
 
+// ─── First-match-wins rule resolution (promoted from lacon-cli) ────────────────
+
+/// Resolve the first rule (project → user → bundled, first-match-wins per ADR-0007)
+/// whose `match` predicate matches `argv`.
+///
+/// `argv[0]` is reduced to its basename before matching (so `/usr/bin/cargo`
+/// matches a rule with `command: cargo`). Layer + within-layer ordering is the
+/// order `RuleLoader::load_all` returns rules in: project rules first, then user,
+/// then bundled — first match wins, no merging across layers (ADR-0004, ADR-0007).
+///
+/// Returns:
+/// - `Ok(Some(rule))` — the first rule that matched.
+/// - `Ok(None)` — no rule matched, OR `argv` is empty (safe to call from the
+///   adapter without a separate empty-argv guard).
+/// - `Err(errors)` — `load_all` surfaced one or more rule-load failures, OR a
+///   `command_regex` failed to compile during matching (WR-02: compile errors
+///   are propagated, never silently treated as a non-match).
+///
+/// Promoted from `lacon-cli::commands::run` so the Claude Code adapter (Phase 3)
+/// can resolve rules without taking a dependency on `lacon-cli`.
+///
+/// # Examples
+///
+/// ```no_run
+/// use lacon_core::rules::{match_argv_via_load_all, RuleLoader};
+///
+/// let mut loader = RuleLoader::new(std::env::current_dir().ok());
+/// let argv = vec!["pnpm".to_owned(), "install".to_owned()];
+/// match match_argv_via_load_all(&mut loader, &argv) {
+///     Ok(Some(rule)) => println!("matched rule {}", rule.id),
+///     Ok(None) => println!("no matching rule"),
+///     Err(errs) => eprintln!("{} rule-load error(s)", errs.len()),
+/// }
+/// ```
+pub fn match_argv_via_load_all(
+    loader: &mut RuleLoader,
+    argv: &[String],
+) -> Result<Option<ResolvedRule>, Vec<ValidationError>> {
+    // Empty-argv guard: the adapter may call this independently of the CLI
+    // boundary that already gates `argv.is_empty()`. Return Ok(None) rather than
+    // indexing into argv[0].
+    if argv.is_empty() {
+        return Ok(None);
+    }
+    let candidates = loader.load_all()?;
+    let prog_basename = argv[0].rsplit('/').next().unwrap_or(&argv[0]).to_owned();
+    for r in candidates {
+        match rule_matches_argv(&r, &prog_basename, &argv[1..]) {
+            Ok(true) => return Ok(Some(r)),
+            Ok(false) => continue,
+            Err(e) => return Err(vec![e]),
+        }
+    }
+    Ok(None)
+}
+
+/// Returns `Ok(true)` if the rule matches `(prog_basename, args)`.
+///
+/// WR-02 fix: `command_regex` is compiled here with an explicit error path.
+/// In practice, `load_all()` already validates regexes via `compile_resolved`, so
+/// a compile failure here indicates a bug rather than a user error. The error is
+/// propagated rather than silently treated as a non-match, which would hide it.
+fn rule_matches_argv(
+    r: &ResolvedRule,
+    prog_basename: &str,
+    args: &[String],
+) -> Result<bool, ValidationError> {
+    use crate::rules::schema::MatchSpec;
+
+    fn spec_matches(
+        spec: &MatchSpec,
+        prog: &str,
+        args: &[String],
+        rule_id: &str,
+    ) -> Result<bool, ValidationError> {
+        if let Some(any) = &spec.any {
+            for s in any {
+                if spec_matches(s, prog, args, rule_id)? {
+                    return Ok(true);
+                }
+            }
+            return Ok(false);
+        }
+        if let Some(all) = &spec.all {
+            for s in all {
+                if !spec_matches(s, prog, args, rule_id)? {
+                    return Ok(false);
+                }
+            }
+            return Ok(true);
+        }
+        if let Some(cmd) = &spec.command {
+            if cmd != prog {
+                return Ok(false);
+            }
+        }
+        if let Some(prefix) = &spec.args_prefix {
+            if args.len() < prefix.len() {
+                return Ok(false);
+            }
+            for (i, p) in prefix.iter().enumerate() {
+                if &args[i] != p {
+                    return Ok(false);
+                }
+            }
+        }
+        if let Some(contain) = &spec.args_contain {
+            if !contain.iter().all(|c| args.iter().any(|a| a == c)) {
+                return Ok(false);
+            }
+        }
+        if let Some(re_str) = &spec.command_regex {
+            let mut joined = prog.to_owned();
+            for a in args {
+                joined.push(' ');
+                joined.push_str(a);
+            }
+            // WR-02: propagate compile errors instead of silently treating them
+            // as a non-match. If load_all() validated this regex at load time,
+            // this Err branch should be unreachable in practice.
+            let re = Regex::new(re_str).map_err(|e| ValidationError::InvalidRegex {
+                path: PathBuf::from(format!("<rule:{rule_id}>")),
+                line: 0,
+                message: format!("command_regex compile error: {e}"),
+            })?;
+            if !re.is_match(&joined) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
+    match &r.rule.match_spec {
+        Some(spec) => spec_matches(spec, prog_basename, args, &r.id),
+        None => Ok(false),
+    }
+}
+
 // ─── Standalone functions (also used by validate module) ──────────────────────
 
 /// Parse a rule YAML string into a `RuleFile`, mapping serde errors to `ValidationError`.
@@ -763,4 +901,32 @@ fn resolve_script(
 
     // Parse the Starlark source — fail at rule load time if invalid.
     crate::starlark_host::StarlarkScript::parse(&content, spec.function.clone(), resolved)
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
+// Inline tests
+// ───────────────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The promoted matcher must be safe to call with an empty argv (the adapter
+    /// may invoke it without the CLI-boundary `argv.is_empty()` gate). It returns
+    /// `Ok(None)` rather than indexing into `argv[0]` and panicking.
+    ///
+    /// Uses a project dir pointed at a nonexistent path so `load_all()` finds no
+    /// project/user rules; bundled rules can never match an empty argv because the
+    /// empty-argv guard short-circuits before `load_all()` is consulted.
+    #[test]
+    fn match_argv_empty_argv_returns_none() {
+        let mut loader = RuleLoader::new(Some(PathBuf::from("/nonexistent-lacon-test-dir")));
+        let argv: Vec<String> = Vec::new();
+        let result = match_argv_via_load_all(&mut loader, &argv);
+        assert!(
+            matches!(result, Ok(None)),
+            "empty argv must return Ok(None), got {:?}",
+            result.as_ref().map(|o| o.as_ref().map(|r| &r.id))
+        );
+    }
 }

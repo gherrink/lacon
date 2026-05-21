@@ -4,7 +4,7 @@ pub mod bundled;
 pub mod loader;
 pub mod schema;
 
-pub use loader::{RuleLoader, ResolvedRule, RuleSource};
+pub use loader::{match_argv_via_load_all, ResolvedRule, RuleLoader, RuleSource};
 pub use schema::{
     BypassWhen, MatchSpec, OnErrorSpec, RewriteSpec, RuleFile, ScriptSpec, StageSpec,
     // Arg types
