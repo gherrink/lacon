@@ -172,9 +172,12 @@ fn install_lacon_hook(settings: &mut Value) {
 ///
 /// - Both markers present and ordered → replace the span between them in place,
 ///   preserving all surrounding content.
-/// - Exactly one marker present (corrupt/orphan state) → leave it untouched,
-///   append a fresh block at EOF, and warn on stderr (conservative: never
-///   destroy user content).
+/// - Exactly one marker present, or markers in corrupt order (orphan state) →
+///   strip the orphan marker token(s) so the file returns to a clean state,
+///   warn on stderr, then append a fresh well-formed block at EOF. Stripping
+///   first (WR-04) guarantees convergence: a subsequent run sees exactly one
+///   well-formed pair and takes the in-place-replace branch instead of accreting
+///   another block (and never clobbers user content sandwiched in between).
 /// - Neither marker present → append a fresh block at EOF.
 fn install_claude_md_block(existing: &str, block_body: &str) -> String {
     let start_idx = existing.find(LACON_START);
@@ -195,15 +198,54 @@ fn install_claude_md_block(existing: &str, block_body: &str) -> String {
         }
         (Some(_), None) | (None, Some(_)) | (Some(_), Some(_)) => {
             // (Some, Some) with start >= end is also a corrupt ordering; treat
-            // it like the orphan-marker case.
+            // it like the orphan-marker case. Strip the orphan marker token(s)
+            // first so re-runs converge to a single well-formed block (WR-04).
             eprintln!(
-                "lacon init: warning — CLAUDE.md has unmatched lacon marker; \
-                 appending fresh block at EOF, leaving existing marker untouched"
+                "lacon init: warning — CLAUDE.md has an unmatched lacon marker; \
+                 removing the stray marker and appending a fresh block at EOF"
             );
-            append_fresh_block(existing, block_body)
+            let cleaned = strip_lacon_markers(existing);
+            append_fresh_block(&cleaned, block_body)
         }
         (None, None) => append_fresh_block(existing, block_body),
     }
+}
+
+/// Remove every `<!-- lacon:start -->` / `<!-- lacon:end -->` marker token from
+/// `text`, leaving the surrounding (user) content intact. Used by the orphan
+/// recovery path (WR-04) to scrub stray markers before appending a fresh block,
+/// so repeated `lacon init` runs converge instead of accreting blocks.
+///
+/// Also drops a marker's own trailing newline (so removing a marker that sat on
+/// its own line does not leave a blank line behind), but never touches adjacent
+/// user content.
+fn strip_lacon_markers(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while !rest.is_empty() {
+        let next_start = rest.find(LACON_START);
+        let next_end = rest.find(LACON_END);
+        // Find the nearest marker (start or end), whichever comes first.
+        let (pos, marker_len) = match (next_start, next_end) {
+            (Some(s), Some(e)) if s <= e => (s, LACON_START.len()),
+            (Some(_), Some(e)) => (e, LACON_END.len()),
+            (Some(s), None) => (s, LACON_START.len()),
+            (None, Some(e)) => (e, LACON_END.len()),
+            (None, None) => {
+                out.push_str(rest);
+                break;
+            }
+        };
+        out.push_str(&rest[..pos]);
+        let mut after = pos + marker_len;
+        // Consume the marker's own trailing newline so a marker that occupied a
+        // whole line does not leave an empty line behind.
+        if rest.as_bytes().get(after) == Some(&b'\n') {
+            after += 1;
+        }
+        rest = &rest[after..];
+    }
+    out
 }
 
 /// Append a fresh marker block at EOF, ensuring a clean newline boundary and a
@@ -232,6 +274,11 @@ fn append_fresh_block(existing: &str, block_body: &str) -> String {
 /// 2-space pretty indent + trailing newline (Claude Code's conventional style),
 /// then `persist`es a same-directory tempfile via POSIX rename(2) — atomic on
 /// macOS + Linux.
+///
+/// WR-03: `persist` keeps the *tempfile's* mode (`0600`), not the destination's.
+/// To avoid silently narrowing a pre-existing `settings.json`'s permissions
+/// (e.g. a group-readable file on a shared box), the original mode is read and
+/// re-applied to the tempfile before `persist` when the destination exists.
 fn atomic_write_json(path: &Path, value: &Value) -> anyhow::Result<()> {
     use std::io::Write;
 
@@ -245,6 +292,21 @@ fn atomic_write_json(path: &Path, value: &Value) -> anyhow::Result<()> {
     tmp.write_all(&bytes)?;
     tmp.write_all(b"\n")?;
     tmp.flush()?;
+
+    // Preserve the destination's existing permissions across the atomic replace
+    // (WR-03). Unix-only: v1 targets macOS + Linux, and a Unix mode is the only
+    // permission concept the spec cares about. Best-effort — a metadata read
+    // failure must not abort the (more important) atomic write.
+    #[cfg(unix)]
+    {
+        if let Ok(meta) = std::fs::metadata(path) {
+            let perms = meta.permissions();
+            // Apply the original file's mode to the tempfile so `persist` (which
+            // keeps the tempfile's perms) lands the file with the original mode.
+            let _ = std::fs::set_permissions(tmp.path(), perms);
+        }
+    }
+
     tmp.persist(path)?;
     Ok(())
 }
@@ -349,11 +411,64 @@ mod tests {
     }
 
     #[test]
-    fn claude_md_orphan_marker_appends_fresh_and_keeps_orphan() {
+    fn claude_md_orphan_marker_strips_stray_and_appends_fresh() {
         let existing = "# Project\n\n<!-- lacon:start -->\nstale\n";
         let out = install_claude_md_block(existing, BLOCK_BODY);
-        // Orphan start marker untouched, fresh full block appended at EOF.
+        // User content survives; the orphan START marker is stripped (WR-04) so
+        // the file has exactly one well-formed pair afterward.
+        assert!(out.contains("# Project"));
         assert!(out.contains("stale"));
-        assert!(out.contains(LACON_END));
+        assert_eq!(
+            out.matches(LACON_START).count(),
+            1,
+            "exactly one start marker after recovery, got: {out}"
+        );
+        assert_eq!(
+            out.matches(LACON_END).count(),
+            1,
+            "exactly one end marker after recovery, got: {out}"
+        );
+    }
+
+    #[test]
+    fn claude_md_orphan_marker_recovery_is_idempotent() {
+        // WR-04: the old code accreted a block on every run and could clobber
+        // content between the orphan and the appended block. Recovery must now
+        // converge to a stable file across repeated runs.
+        let existing = "# Project\n\n<!-- lacon:start -->\nstale\n";
+        let first = install_claude_md_block(existing, BLOCK_BODY);
+        let second = install_claude_md_block(&first, BLOCK_BODY);
+        assert_eq!(
+            first, second,
+            "orphan recovery must converge (idempotent across runs)"
+        );
+        // And it must stay a single well-formed block, not accrete.
+        assert_eq!(second.matches(LACON_START).count(), 1);
+        assert_eq!(second.matches(LACON_END).count(), 1);
+        // User content preserved.
+        assert!(second.contains("# Project"));
+        assert!(second.contains("stale"));
+    }
+
+    #[test]
+    fn claude_md_orphan_end_marker_recovers() {
+        // An orphan END marker (the other half) is also stripped + recovered.
+        let existing = "# Project\n\n<!-- lacon:end -->\n";
+        let out = install_claude_md_block(existing, BLOCK_BODY);
+        assert_eq!(out.matches(LACON_START).count(), 1);
+        assert_eq!(out.matches(LACON_END).count(), 1);
+        let again = install_claude_md_block(&out, BLOCK_BODY);
+        assert_eq!(out, again, "end-marker recovery is idempotent too");
+    }
+
+    #[test]
+    fn strip_lacon_markers_removes_both_kinds() {
+        let text = "before\n<!-- lacon:start -->\nmid\n<!-- lacon:end -->\nafter\n";
+        let cleaned = strip_lacon_markers(text);
+        assert!(!cleaned.contains(LACON_START));
+        assert!(!cleaned.contains(LACON_END));
+        assert!(cleaned.contains("before"));
+        assert!(cleaned.contains("mid"));
+        assert!(cleaned.contains("after"));
     }
 }

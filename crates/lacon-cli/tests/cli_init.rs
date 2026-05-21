@@ -140,6 +140,80 @@ fn init_preserves_user_hooks_and_settings() {
     );
 }
 
+/// WR-03: re-running `lacon init` must NOT silently narrow a pre-existing
+/// `settings.json`'s file permissions. A user with a group-readable file
+/// (`0644`) on a shared box should keep that mode after the atomic write.
+#[cfg(unix)]
+#[test]
+fn init_preserves_existing_settings_file_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempdir().unwrap();
+    fs::create_dir_all(dir.path().join(".claude")).unwrap();
+    let settings_path = dir.path().join(".claude/settings.json");
+    fs::write(&settings_path, "{}\n").unwrap();
+    // Set a non-default, group/other-readable mode.
+    fs::set_permissions(&settings_path, fs::Permissions::from_mode(0o644)).unwrap();
+
+    Command::cargo_bin("lacon")
+        .unwrap()
+        .current_dir(dir.path())
+        .arg("init")
+        .assert()
+        .success();
+
+    let mode_after = fs::metadata(&settings_path)
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(
+        mode_after, 0o644,
+        "lacon init must preserve the original 0644 mode, got {mode_after:o}"
+    );
+}
+
+/// WR-04: an orphan (unmatched) CLAUDE.md marker must recover to a stable file
+/// across repeated `lacon init` runs — the old code accreted a fresh block on
+/// every run and could clobber user content between the orphan and the appended
+/// block.
+#[test]
+fn init_orphan_claude_md_marker_recovery_is_idempotent() {
+    let dir = tempdir().unwrap();
+    // Pre-seed CLAUDE.md with an orphan START marker (corrupt state).
+    fs::write(
+        dir.path().join("CLAUDE.md"),
+        "# Project\n\n<!-- lacon:start -->\nstale note\n",
+    )
+    .unwrap();
+
+    Command::cargo_bin("lacon")
+        .unwrap()
+        .current_dir(dir.path())
+        .arg("init")
+        .assert()
+        .success();
+    let md_v1 = fs::read_to_string(dir.path().join("CLAUDE.md")).unwrap();
+
+    Command::cargo_bin("lacon")
+        .unwrap()
+        .current_dir(dir.path())
+        .arg("init")
+        .assert()
+        .success();
+    let md_v2 = fs::read_to_string(dir.path().join("CLAUDE.md")).unwrap();
+
+    assert_eq!(
+        md_v1, md_v2,
+        "orphan-marker recovery must converge to a byte-stable file"
+    );
+    // Exactly one well-formed block; user content preserved.
+    assert_eq!(md_v2.matches("<!-- lacon:start -->").count(), 1, "{md_v2}");
+    assert_eq!(md_v2.matches("<!-- lacon:end -->").count(), 1, "{md_v2}");
+    assert!(md_v2.contains("# Project"));
+    assert!(md_v2.contains("stale note"));
+}
+
 #[test]
 fn init_re_runs_drop_old_lacon_entries() {
     // Simulate drift: two lacon-managed Bash entries pre-exist. After init,
