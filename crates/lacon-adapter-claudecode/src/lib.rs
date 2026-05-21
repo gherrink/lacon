@@ -168,6 +168,17 @@ pub fn run_hook(input: protocol::HookInput) -> anyhow::Result<HookOutcome> {
             continue;
         }
 
+        // A segment containing a top-level pipe (`echo hi | grep h`) cannot be
+        // safely wrapped: `lacon run -- <argv>` executes via
+        // `Command::new(argv[0]).args(...)` with NO shell hop, so a re-quoted `|`
+        // would become a literal argument and destroy the pipeline. Per
+        // docs/specs/chained-commands.md:17 (pipes out of v1 filter scope), keep
+        // the segment byte-exact so the shell still sees the real `|`.
+        if crate::chain::has_top_level_pipe(&segment.text) {
+            rendered.push(segment.text.clone());
+            continue;
+        }
+
         match match_argv_via_load_all(&mut loader, &argv) {
             Ok(Some(resolved)) => {
                 // Apply the rule's rewrite block (or the no-op default).
@@ -235,6 +246,13 @@ pub fn run_hook(input: protocol::HookInput) -> anyhow::Result<HookOutcome> {
 mod tests {
     use super::*;
     use crate::protocol::{BashToolInput, HookInput};
+    use std::sync::Mutex;
+
+    /// `LACON_DISABLE` is process-global; cargo runs tests in parallel. Any test
+    /// that sets/reads it must hold this lock so a concurrent test does not see a
+    /// transient value (flaky-test fix). The guard is held for the whole body and
+    /// the var is always removed before release.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn input_with(command: &str, tool_name: &str) -> HookInput {
         HookInput {
@@ -275,6 +293,11 @@ mod tests {
 
     #[test]
     fn bang_bang_prefix_passes_through() {
+        // Holds ENV_LOCK: `!!` bypass must fire regardless of LACON_DISABLE state,
+        // but a concurrent test setting LACON_DISABLE=1 would mask the cause, so
+        // pin a known-clean env for a deterministic assertion.
+        let _g = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::remove_var("LACON_DISABLE");
         let out = run_hook(input_with("!! pnpm test", "Bash")).unwrap();
         assert!(is_passthrough(&out));
     }
@@ -282,6 +305,8 @@ mod tests {
     #[test]
     fn bang_bang_prefix_with_leading_whitespace_passes_through() {
         // LSTRIP then starts_with("!!").
+        let _g = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::remove_var("LACON_DISABLE");
         let out = run_hook(input_with("   !! pnpm test", "Bash")).unwrap();
         assert!(is_passthrough(&out));
     }
@@ -289,6 +314,7 @@ mod tests {
     #[test]
     fn lacon_disable_env_passes_through() {
         // Serialize env mutation: set, run, unset (other tests must not see it).
+        let _g = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         std::env::set_var("LACON_DISABLE", "1");
         let out = run_hook(input_with("echo hi", "Bash")).unwrap();
         std::env::remove_var("LACON_DISABLE");
@@ -304,6 +330,7 @@ mod tests {
     #[test]
     fn detect_bypass_only_exact_one_disables() {
         // D-24: only the exact string "1" bypasses.
+        let _g = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         for v in ["", "0", "true", "yes", "2"] {
             std::env::set_var("LACON_DISABLE", v);
             assert!(!detect_bypass("echo hi"), "value {v:?} must NOT bypass");
@@ -315,6 +342,10 @@ mod tests {
 
     #[test]
     fn detect_bypass_bang_bang() {
+        // `!!` triggers regardless of LACON_DISABLE; pin a clean env so the
+        // negative cases ("ls !!", "echo hi") aren't masked by a concurrent test.
+        let _g = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::remove_var("LACON_DISABLE");
         assert!(detect_bypass("!! ls"));
         assert!(detect_bypass("  !!ls"));
         assert!(!detect_bypass("ls !!"));

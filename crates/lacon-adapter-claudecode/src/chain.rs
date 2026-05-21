@@ -319,6 +319,144 @@ pub fn split_chain(input: &str) -> Vec<Segment> {
     segments
 }
 
+/// True if `segment` contains a top-level single `|` (a pipe) outside any opaque
+/// construct (quotes, subshells, `$(...)`, backticks, process-sub, heredoc).
+///
+/// Used by the hook orchestrator (Plan 03-04): a matched segment that is a
+/// pipeline (`echo hi | grep h`) CANNOT be safely wrapped as
+/// `lacon run --rule <id> -- <argv>`, because the downstream Runner executes
+/// `Command::new(&argv[0]).args(&argv[1..])` with NO shell hop — re-quoting the
+/// `|` as a literal argument would destroy the pipeline semantics. Per
+/// `docs/specs/chained-commands.md:17` ("filtering inside pipes is explicitly out
+/// of scope for v1") the orchestrator treats a pipelined segment as unmatched
+/// (byte-exact pass-through) so the shell still sees the real `|`.
+///
+/// `||` (the OrOr chain op) is NOT a pipe and never reports true here; it is also
+/// already a chain operator that `split_chain` would have split on at top level,
+/// so a single [`Segment`] never contains a top-level `||`.
+pub fn has_top_level_pipe(segment: &str) -> bool {
+    let bytes = segment.as_bytes();
+    let n = bytes.len();
+    let mut state = SplitState::new();
+    let mut i = 0usize;
+
+    while i < n {
+        let b = bytes[i];
+
+        if state.escape_pending {
+            state.escape_pending = false;
+            i += 1;
+            continue;
+        }
+        if let Some(ctx) = &state.in_heredoc {
+            if b == b'\n' {
+                let line_start = i + 1;
+                let mut line_end = line_start;
+                while line_end < n && bytes[line_end] != b'\n' {
+                    line_end += 1;
+                }
+                let mut content_start = line_start;
+                if ctx.strip_tabs {
+                    while content_start < line_end && bytes[content_start] == b'\t' {
+                        content_start += 1;
+                    }
+                }
+                if &segment[content_start..line_end] == ctx.delimiter {
+                    state.in_heredoc = None;
+                    i = line_end;
+                    continue;
+                }
+            }
+            i += 1;
+            continue;
+        }
+        if b == b'\\' && !state.in_single_quote {
+            state.escape_pending = true;
+            i += 1;
+            continue;
+        }
+        if b == b'\'' && !state.in_double_quote {
+            state.in_single_quote = !state.in_single_quote;
+            i += 1;
+            continue;
+        }
+        if b == b'"' && !state.in_single_quote {
+            state.in_double_quote = !state.in_double_quote;
+            i += 1;
+            continue;
+        }
+        if state.in_single_quote {
+            i += 1;
+            continue;
+        }
+        if b == b'`' {
+            state.backtick_depth ^= 1;
+            i += 1;
+            continue;
+        }
+        if b == b'$' && i + 1 < n && bytes[i + 1] == b'(' {
+            state.cmd_sub_depth += 1;
+            i += 2;
+            continue;
+        }
+        if (b == b'<' || b == b'>') && i + 1 < n && bytes[i + 1] == b'(' {
+            state.process_sub_depth += 1;
+            i += 2;
+            continue;
+        }
+        if b == b'<' && i + 2 < n && bytes[i + 1] == b'<' && bytes[i + 2] == b'<' {
+            i += 3;
+            continue;
+        }
+        if b == b'<' && i + 1 < n && bytes[i + 1] == b'<' && !state.in_double_quote {
+            let mut j = i + 2;
+            let strip_tabs = j < n && bytes[j] == b'-';
+            if strip_tabs {
+                j += 1;
+            }
+            while j < n && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                j += 1;
+            }
+            if let Some((delimiter, after)) = scan_heredoc_delimiter(segment, j) {
+                state.in_heredoc = Some(HeredocCtx {
+                    delimiter,
+                    strip_tabs,
+                });
+                i = after;
+                continue;
+            }
+            i += 2;
+            continue;
+        }
+        if b == b'(' && !state.in_double_quote {
+            state.subshell_depth += 1;
+            i += 1;
+            continue;
+        }
+        if b == b')' && !state.in_double_quote {
+            if state.cmd_sub_depth > 0 {
+                state.cmd_sub_depth -= 1;
+            } else if state.process_sub_depth > 0 {
+                state.process_sub_depth -= 1;
+            } else if state.subshell_depth > 0 {
+                state.subshell_depth -= 1;
+            }
+            i += 1;
+            continue;
+        }
+        // Top-level `|` that is NOT part of `||` is a pipe.
+        if b == b'|' && state.at_top_level() {
+            let is_or_or = i + 1 < n && bytes[i + 1] == b'|';
+            let prev_or_or = i > 0 && bytes[i - 1] == b'|';
+            if !is_or_or && !prev_or_or {
+                return true;
+            }
+        }
+        i += 1;
+    }
+    false
+}
+
 /// Scan a heredoc delimiter word starting at byte `start`. Handles bare,
 /// single-quoted, and double-quoted delimiters. Returns `(delimiter, next_index)`
 /// where `next_index` is the byte just past the delimiter token, or `None` if no
@@ -449,5 +587,37 @@ mod tests {
         let segs = split_chain("a | b");
         assert_eq!(segs.len(), 1);
         assert_eq!(segs[0].text, "a | b");
+    }
+
+    #[test]
+    fn has_top_level_pipe_detects_bare_pipe() {
+        assert!(has_top_level_pipe("echo hi | grep h"));
+        assert!(has_top_level_pipe("a|b"));
+    }
+
+    #[test]
+    fn has_top_level_pipe_ignores_no_pipe() {
+        assert!(!has_top_level_pipe("echo hi"));
+        assert!(!has_top_level_pipe("ls -la"));
+    }
+
+    #[test]
+    fn has_top_level_pipe_ignores_quoted_pipe() {
+        assert!(!has_top_level_pipe("echo 'a | b'"));
+        assert!(!has_top_level_pipe("echo \"a | b\""));
+    }
+
+    #[test]
+    fn has_top_level_pipe_ignores_pipe_in_subshell_and_cmdsub() {
+        assert!(!has_top_level_pipe("echo $(a | b)"));
+        assert!(!has_top_level_pipe("(a | b)"));
+        assert!(!has_top_level_pipe("echo `a | b`"));
+    }
+
+    #[test]
+    fn has_top_level_pipe_ignores_or_or() {
+        // A single segment never holds a top-level `||` (split_chain would have
+        // split), but guard the predicate anyway.
+        assert!(!has_top_level_pipe("a || b"));
     }
 }
