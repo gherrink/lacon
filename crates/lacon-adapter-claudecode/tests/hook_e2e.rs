@@ -420,6 +420,65 @@ fn tilde_segment_passes_through_unwrapped() {
     );
 }
 
+/// CR-01 (iteration 4, allowlist root-cause fix): brace expansion `{a,b}` was the
+/// case the iteration-3 denylist still missed — `eslint src/{a,b}.js` would be
+/// wrapped and silently corrupted into the literal `'src/{a,b}.js'`. Under the
+/// `is_wrap_safe` allowlist, `{` / `}` are not safe-literal bytes, so the segment
+/// is NOT wrap-safe and passes through byte-exact (cheapest pass-through: empty
+/// stdout, no rewrite).
+#[test]
+fn brace_expansion_segment_passes_through_unwrapped() {
+    let dir = tempfile::tempdir().unwrap();
+    // Rule matches `eslint`/`cargo` (command basename) but brace expansion blocks
+    // the wrap; assert the hook does NOT rewrite (byte-exact pass-through).
+    write_rule(
+        dir.path(),
+        r#"
+id: eslint-rule
+match: { command: eslint }
+pipeline:
+  - strip_ansi
+"#,
+    );
+    for command in ["eslint src/{a,b}.js", "eslint {1..10}.js"] {
+        let payload = bash_payload(&dir.path().to_string_lossy(), command);
+        let output = run_hook_with_input(&payload);
+        assert!(output.status.success());
+        assert!(
+            output.stdout.is_empty(),
+            "brace-expansion segment {command:?} must not be wrapped, got {:?}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+    }
+}
+
+/// CR-01 (iteration 4): brace expansion in a chain segment passes through while a
+/// sibling plain segment is still wrapped — proving the allowlist gate is
+/// per-segment. `cargo build {a,b}` (brace expansion → unsafe) is preserved
+/// byte-exact; the trailing `echo done` (plain → wrap-safe) is wrapped.
+#[test]
+fn brace_expansion_segment_preserved_while_sibling_wrapped() {
+    let dir = tempfile::tempdir().unwrap();
+    write_rule(dir.path(), ECHO_RULE);
+    let payload = bash_payload(
+        &dir.path().to_string_lossy(),
+        "cargo build {a,b} && echo done",
+    );
+    let output = run_hook_with_input(&payload);
+    assert!(output.status.success());
+    let cmd = updated_command(&output);
+    // First (brace-expansion) segment preserved byte-exact, NOT wrapped.
+    assert!(
+        cmd.starts_with("cargo build {a,b} && "),
+        "brace-expansion segment preserved verbatim and unwrapped: {cmd}"
+    );
+    // Second segment wrapped.
+    assert!(
+        cmd.contains("lacon run --rule echo-rule -- echo done"),
+        "second segment wrapped: {cmd}"
+    );
+}
+
 /// CR-01..CR-04 boundary: an unwrappable segment in a chain is preserved
 /// byte-exact while a sibling matched segment is still wrapped — proving the
 /// guard is per-segment, not whole-chain.

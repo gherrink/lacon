@@ -353,367 +353,161 @@ pub fn split_chain(input: &str) -> Vec<Segment> {
     segments
 }
 
-/// True if `segment` contains a top-level single `|` (a pipe) outside any opaque
-/// construct (quotes, subshells, `$(...)`, backticks, process-sub, heredoc).
+/// True when a matched chain `segment` can be safely re-tokenized and re-quoted
+/// into a `lacon run --rule <id> -- <argv>` wrapper without changing the
+/// command's runtime semantics. This is a positive **ALLOWLIST** (CR-01 root-cause
+/// fix, iteration 4): the orchestrator wraps a matched segment ONLY when this
+/// returns `true`; everything else passes through byte-exact.
 ///
-/// Used by the hook orchestrator (Plan 03-04): a matched segment that is a
-/// pipeline (`echo hi | grep h`) CANNOT be safely wrapped as
-/// `lacon run --rule <id> -- <argv>`, because the downstream Runner executes
-/// `Command::new(&argv[0]).args(&argv[1..])` with NO shell hop — re-quoting the
-/// `|` as a literal argument would destroy the pipeline semantics. Per
-/// `docs/specs/chained-commands.md:17` ("filtering inside pipes is explicitly out
-/// of scope for v1") the orchestrator treats a pipelined segment as unmatched
-/// (byte-exact pass-through) so the shell still sees the real `|`.
+/// # Why an allowlist, not a denylist
 ///
-/// `||` (the OrOr chain op) is NOT a pipe and never reports true here; it is also
-/// already a chain operator that `split_chain` would have split on at top level,
-/// so a single [`Segment`] never contains a top-level `||`.
-pub fn has_top_level_pipe(segment: &str) -> bool {
+/// When `run_hook` wraps a segment it: tokenizes it with `argv_for_resolution`
+/// (a whitespace splitter that only models single/double quotes), applies the
+/// rule's flag rewrite, and re-quotes every token with `quote_for_shell`
+/// (single-quoting). Single-quoting neutralizes EVERY shell expansion, and the
+/// downstream Runner executes `Command::new(&argv[0]).args(&argv[1..])` with NO
+/// shell hop — so there is no place to faithfully re-emit any expansion bash
+/// would have performed.
+///
+/// The previous `has_unwrappable_construct` predicate was a denylist of
+/// dangerous constructs (`$(...)`, backticks, redirections, `${...}`, globs,
+/// `~`, `$VAR`, …). A denylist must enumerate every construct that breaks, and it
+/// repeatedly missed cases (most recently brace expansion `{a,b}` / `{1..10}`,
+/// e.g. `eslint src/{a,b}.js` was wrapped and silently corrupted into the literal
+/// `'src/{a,b}.js'`). Inverting to an allowlist means a segment is wrapped ONLY
+/// when it is *provably reproducible* by tokenize→requote; any unanticipated byte
+/// is treated as unsafe and passed through byte-exact (the fail-safe direction,
+/// matching `docs/specs/chained-commands.md:17`).
+///
+/// # What counts as wrap-safe
+///
+/// A segment is wrap-safe iff it is composed EXCLUSIVELY of (scanning top level):
+/// - whitespace separators (space, tab),
+/// - "safe literal" bytes that are inert in the shell AND survive a
+///   `quote_for_shell` round-trip: ASCII alphanumerics plus the set
+///   `/ . - _ = : @ , + %`,
+/// - single-quoted spans `'...'` — always literal/safe (the shell strips the
+///   quotes and `argv_for_resolution` reproduces the inner bytes; on requote
+///   `quote_for_shell` re-single-quotes them, round-tripping faithfully),
+/// - double-quoted spans `"..."` that contain NO `$`, backtick, or backslash — a
+///   double-quoted *literal* like `"a b"` is inert (it just suppresses word
+///   splitting / globbing on already-inert bytes); `"$HOME"` is NOT, because the
+///   `$` still expands inside double quotes.
+///
+/// ANY other top-level byte makes the segment NOT wrap-safe: `$`, backtick,
+/// `* ? [ ] { }`, `~`, `< >`, `|`, `&`, `;`, `( )`, `#`, `!`, `\`, and any
+/// control / non-printable byte. An empty or whitespace-only segment is NOT
+/// wrappable (nothing to resolve).
+///
+/// This subsumes the old separate pipe guard (`|` is rejected here) and the old
+/// `has_unwrappable_construct` denylist in one positive predicate.
+///
+/// # Round-trip correctness
+///
+/// For every segment this accepts, the existing `argv_for_resolution` tokenizer +
+/// `quote_for_shell` round-trips faithfully:
+/// - bare safe-literal runs tokenize on whitespace into argv tokens of inert
+///   bytes; `quote_for_shell` re-emits each token (single-quoting if it contains
+///   `= % * ?` etc. — but those can only appear here as `=` / `%`, both inert),
+/// - single-quoted spans: `argv_for_resolution` drops the quote bytes and keeps
+///   the inner bytes (including whitespace) in one token (`echo 'a b'` →
+///   `["echo","a b"]`); `quote_for_shell` re-single-quotes → `'a b'`,
+/// - double-quoted literal spans: same — `echo "a b"` tokenizes to
+///   `["echo","a b"]` (the quoted whitespace stays in the token, NOT split), and
+///   re-quotes to `'a b'`, which the single downstream shell parse turns back
+///   into the token `a b`.
+///
+/// Because a wrap-safe segment contains no expansion, no redirection, and no
+/// operator, the requoted argv reproduces the exact same program invocation.
+///
+/// Allocation-free, single-pass, linear-time — preserves the ≤10ms cold-start
+/// budget (ADR-0013).
+pub fn is_wrap_safe(segment: &str) -> bool {
     let bytes = segment.as_bytes();
     let n = bytes.len();
-    let mut state = SplitState::new();
     let mut i = 0usize;
+    let mut saw_token = false;
 
     while i < n {
         let b = bytes[i];
 
-        if state.escape_pending {
-            state.escape_pending = false;
+        // Whitespace separators are always safe (and tokenize boundaries).
+        if b == b' ' || b == b'\t' {
             i += 1;
             continue;
         }
-        if let Some(ctx) = &state.in_heredoc {
-            if b == b'\n' {
-                let line_start = i + 1;
-                let mut line_end = line_start;
-                while line_end < n && bytes[line_end] != b'\n' {
-                    line_end += 1;
-                }
-                let mut content_start = line_start;
-                if ctx.strip_tabs {
-                    while content_start < line_end && bytes[content_start] == b'\t' {
-                        content_start += 1;
-                    }
-                }
-                if segment[content_start..line_end] == ctx.delimiter {
-                    state.in_heredoc = None;
-                    i = line_end;
-                    continue;
-                }
-            }
-            i += 1;
-            continue;
+
+        // A newline at top level would join two commands when the shell re-parses
+        // the wrapped form; treat it as unsafe (it is not a plain separator here).
+        if b == b'\n' || b == b'\r' {
+            return false;
         }
-        if b == b'\\' && !state.in_single_quote {
-            state.escape_pending = true;
-            i += 1;
-            continue;
-        }
-        if b == b'\'' && !state.in_double_quote {
-            state.in_single_quote = !state.in_single_quote;
-            i += 1;
-            continue;
-        }
-        if b == b'"' && !state.in_single_quote {
-            state.in_double_quote = !state.in_double_quote;
-            i += 1;
-            continue;
-        }
-        if state.in_single_quote {
-            i += 1;
-            continue;
-        }
-        if b == b'`' {
-            state.backtick_depth ^= 1;
-            i += 1;
-            continue;
-        }
-        // `${...}` parameter expansion is opaque (CR-04): mirror split_chain so a
-        // `|` inside `${x:-a | b}` is not reported as a top-level pipe.
-        if b == b'$' && i + 1 < n && bytes[i + 1] == b'{' {
-            state.param_expansion_depth += 1;
-            i += 2;
-            continue;
-        }
-        if b == b'$' && i + 1 < n && bytes[i + 1] == b'(' {
-            state.cmd_sub_depth += 1;
-            i += 2;
-            continue;
-        }
-        if state.param_expansion_depth > 0 {
-            if b == b'{' {
-                state.param_expansion_depth += 1;
-                i += 1;
-                continue;
-            }
-            if b == b'}' {
-                state.param_expansion_depth -= 1;
-                i += 1;
-                continue;
-            }
-        }
-        if (b == b'<' || b == b'>') && i + 1 < n && bytes[i + 1] == b'(' {
-            state.process_sub_depth += 1;
-            i += 2;
-            continue;
-        }
-        if b == b'<' && i + 2 < n && bytes[i + 1] == b'<' && bytes[i + 2] == b'<' {
-            i += 3;
-            continue;
-        }
-        if b == b'<' && i + 1 < n && bytes[i + 1] == b'<' && !state.in_double_quote {
-            let mut j = i + 2;
-            let strip_tabs = j < n && bytes[j] == b'-';
-            if strip_tabs {
+
+        // Single-quoted span: everything until the closing `'` is literal/safe.
+        // An unterminated single quote is malformed → unsafe.
+        if b == b'\'' {
+            let mut j = i + 1;
+            while j < n && bytes[j] != b'\'' {
                 j += 1;
             }
-            while j < n && (bytes[j] == b' ' || bytes[j] == b'\t') {
+            if j >= n {
+                return false; // unterminated single quote
+            }
+            saw_token = true;
+            i = j + 1;
+            continue;
+        }
+
+        // Double-quoted span: safe ONLY if it contains no `$`, backtick, or
+        // backslash (all of which keep their special meaning inside double
+        // quotes). An unterminated double quote is malformed → unsafe.
+        if b == b'"' {
+            let mut j = i + 1;
+            while j < n && bytes[j] != b'"' {
+                let c = bytes[j];
+                if c == b'$' || c == b'`' || c == b'\\' {
+                    return false; // expansion / escape survives inside "..."
+                }
                 j += 1;
             }
-            if let Some((delimiter, after)) = scan_heredoc_delimiter(segment, j) {
-                state.in_heredoc = Some(HeredocCtx {
-                    delimiter,
-                    strip_tabs,
-                });
-                i = after;
-                continue;
+            if j >= n {
+                return false; // unterminated double quote
             }
-            i += 2;
+            saw_token = true;
+            i = j + 1;
             continue;
         }
-        if b == b'(' && !state.in_double_quote {
-            state.subshell_depth += 1;
+
+        // Top-level "safe literal" byte: ASCII alphanumeric or one of the inert
+        // punctuation bytes that also survive a quote_for_shell round-trip.
+        if is_safe_literal_byte(b) {
+            saw_token = true;
             i += 1;
             continue;
         }
-        if b == b')' && !state.in_double_quote {
-            if state.cmd_sub_depth > 0 {
-                state.cmd_sub_depth -= 1;
-            } else if state.process_sub_depth > 0 {
-                state.process_sub_depth -= 1;
-            } else if state.subshell_depth > 0 {
-                state.subshell_depth -= 1;
-            }
-            i += 1;
-            continue;
-        }
-        // Top-level `|` that is NOT part of `||` is a pipe.
-        if b == b'|' && state.at_top_level() {
-            let is_or_or = i + 1 < n && bytes[i + 1] == b'|';
-            let prev_or_or = i > 0 && bytes[i - 1] == b'|';
-            if !is_or_or && !prev_or_or {
-                return true;
-            }
-        }
-        i += 1;
+
+        // Anything else (`$ \` * ? [ ] { } ~ < > | & ; ( ) # ! \\`, control /
+        // non-printable bytes, multi-byte UTF-8 lead/continuation bytes) is not
+        // provably reproducible by tokenize→requote → not wrap-safe.
+        return false;
     }
-    false
+
+    // Reject empty / whitespace-only segments: there is nothing to wrap.
+    saw_token
 }
 
-/// True if `segment` contains a top-level shell construct that the
-/// lossy `lacon run -- <argv>` wrap CANNOT reproduce, so the segment MUST pass
-/// through byte-exact instead of being re-tokenized + re-quoted (CR-01..CR-03,
-/// WR-02).
-///
-/// The orchestrator (lib.rs) resolves rules against `argv_for_resolution`, a
-/// whitespace tokenizer that only models single/double quotes. Anything else —
-/// redirections, command/process substitution, comments, `${...}` expansion,
-/// escaped whitespace, AND every other shell expansion (bare variable `$VAR`,
-/// positional/special `$1`/`$?`/`$@`, tilde `~`, pathname globs `*`/`?`/`[`) —
-/// survives tokenization as plain bytes and is then single-quoted by
-/// `quote_for_shell` (its METACHARS set includes `$ ~ * ? [`, correctly, for
-/// injection-safety), which changes the command's runtime semantics (a redirect
-/// is dropped, a substitution/variable/glob is neutralized, a comment becomes
-/// literal args, an escaped space splits one arg into two). The Runner executes
-/// `Command::new(argv[0]).args(...)` with NO shell hop, so there is no place to
-/// faithfully re-emit ANY of these constructs. The conservative, fail-safe
-/// posture (matching the existing `has_top_level_pipe` pipe guard and
-/// `docs/specs/chained-commands.md:17`) is to leave such a segment untouched so
-/// the shell still sees the real construct.
-///
-/// CR-01 (iteration 2): the root cause is wider than the four named iter-1
-/// constructs — `quote_for_shell` neutralizes EVERY shell-expansion metacharacter,
-/// not just the ones with dedicated branches. So this predicate now treats ANY
-/// unquoted shell-expansion metacharacter as unwrappable, not a curated subset.
-///
-/// Detected (outside single quotes — single-quoted bytes are literal and
-/// faithfully reproduced):
-/// - command substitution `$(...)` and backticks `` `...` ``
-/// - process substitution `<(...)` / `>(...)`
-/// - parameter expansion `${...}`
-/// - bare variable / positional / special-param expansion: any `$` not part of
-///   `${`/`$(` (e.g. `$HOME`, `$1`, `$?`, `$@`). Fires even inside double quotes,
-///   because `"$HOME"` still expands in bash but the wrap would single-quote it.
-/// - tilde expansion `~` in word position (start-of-word) at top level
-/// - pathname/glob metacharacters `*` / `?` / `[` at top level
-/// - redirections: any top-level `<` or `>` (covers `>`, `>>`, `<`, `2>`,
-///   `&>`, `>&`, here-strings `<<<`, heredocs `<<DELIM`)
-/// - a top-level `#` comment (start-of-segment or preceded by whitespace)
-/// - a top-level unescaped backslash (escaped whitespace would re-tokenize wrong)
-///
-/// Constructs that ARE faithfully reproduced (single/double-quoted *literal*
-/// words, glued quotes) do NOT report true. A top-level pipe is reported
-/// separately by [`has_top_level_pipe`]; this predicate deliberately ignores `|`
-/// so callers can keep the two guards independent (and so the existing pipe tests
-/// stay valid).
-pub fn has_unwrappable_construct(segment: &str) -> bool {
-    let bytes = segment.as_bytes();
-    let n = bytes.len();
-    let mut state = SplitState::new();
-    let mut i = 0usize;
-    // Whether the previous *consumed* byte (at top level) was whitespace or
-    // start-of-segment — needed so a `#` only starts a comment in word position
-    // (bash: `echo a#b` is one literal token, `echo a #b` is `echo a` + comment).
-    let mut prev_was_ws_or_start = true;
-
-    while i < n {
-        let b = bytes[i];
-
-        if state.escape_pending {
-            state.escape_pending = false;
-            i += 1;
-            prev_was_ws_or_start = false;
-            continue;
-        }
-        // NOTE (WR-02): unlike `split_chain` / `has_top_level_pipe`, this predicate
-        // has NO heredoc-body or process-sub opacity machinery. The top-level
-        // `<`/`>` check below short-circuits to `true` for ANY redirection byte —
-        // which subsumes heredoc openers (`<<DELIM`), here-strings (`<<<`), and
-        // process-sub openers (`<(`/`>(`) — before opacity could ever matter. So
-        // `state.in_heredoc` is never set and `state.process_sub_depth` is never
-        // incremented here; carrying the heredoc-body block or a process-sub
-        // decrement arm would be dead code in a security-relevant predicate.
-        // A top-level backslash (outside single quotes) escapes the next byte.
-        // `echo a\ b` is one argument in bash but `argv_for_resolution` would
-        // split it; treat it as unwrappable (WR-02).
-        if b == b'\\' && !state.in_single_quote {
-            if state.at_top_level() {
-                return true;
-            }
-            state.escape_pending = true;
-            i += 1;
-            prev_was_ws_or_start = false;
-            continue;
-        }
-        if b == b'\'' && !state.in_double_quote {
-            state.in_single_quote = !state.in_single_quote;
-            i += 1;
-            prev_was_ws_or_start = false;
-            continue;
-        }
-        if b == b'"' && !state.in_single_quote {
-            state.in_double_quote = !state.in_double_quote;
-            i += 1;
-            prev_was_ws_or_start = false;
-            continue;
-        }
-        if state.in_single_quote {
-            i += 1;
-            prev_was_ws_or_start = false;
-            continue;
-        }
-        // Backtick command substitution (CR-02).
-        if b == b'`' {
-            return true;
-        }
-        // `${...}` parameter expansion (CR-02 family / spec opaque construct).
-        if b == b'$' && i + 1 < n && bytes[i + 1] == b'{' {
-            if state.at_top_level() {
-                return true;
-            }
-            state.param_expansion_depth += 1;
-            i += 2;
-            continue;
-        }
-        // `$(...)` command substitution (CR-02).
-        if b == b'$' && i + 1 < n && bytes[i + 1] == b'(' {
-            if state.at_top_level() {
-                return true;
-            }
-            state.cmd_sub_depth += 1;
-            i += 2;
-            continue;
-        }
-        // CR-01: a bare `$` that is NOT part of `${`/`$(` (handled above) is a
-        // variable / positional / special-param expansion (`$HOME`, `$1`, `$?`,
-        // `$@`). We are already past the `state.in_single_quote` early-continue, so
-        // any `$` reaching here is outside single quotes — bash WILL expand it
-        // (including inside double quotes: `"$HOME"`) and `quote_for_shell` would
-        // single-quote-neutralize it. The wrap form cannot reproduce the
-        // expansion, so the segment must pass through byte-exact.
-        if b == b'$' {
-            return true;
-        }
-        if state.param_expansion_depth > 0 {
-            if b == b'{' {
-                state.param_expansion_depth += 1;
-                i += 1;
-                // `{`/`}` are non-whitespace, so a `#` glued after a closed
-                // `${...}` (e.g. `echo ${x}#tag`) is NOT in word position and must
-                // not start a comment — keep the word-position flag accurate (WR-01).
-                prev_was_ws_or_start = false;
-                continue;
-            }
-            if b == b'}' {
-                state.param_expansion_depth -= 1;
-                i += 1;
-                prev_was_ws_or_start = false;
-                continue;
-            }
-        }
-        // Redirections + process substitution: any top-level `<` or `>` is a
-        // construct the argv form cannot reproduce (CR-01). This covers `>`,
-        // `>>`, `<`, here-strings `<<<`, heredocs `<<DELIM`, process-sub
-        // `<(...)`/`>(...)`, and (with a preceding fd or `&`) `2>`, `&>`, `>&`.
-        if (b == b'<' || b == b'>') && state.at_top_level() {
-            return true;
-        }
-        // Subshell / cmd-sub depth tracking so a top-level test above is not
-        // tripped by an inner construct. (No process-sub arm: a `<(`/`>(` opener
-        // is caught by the top-level `<`/`>` short-circuit above, so
-        // `process_sub_depth` is never incremented here — WR-02.)
-        if b == b'(' && !state.in_double_quote {
-            state.subshell_depth += 1;
-            i += 1;
-            // `(`/`)` are non-whitespace: a `#` glued after a closed `(...)`
-            // subshell (e.g. `(true)#tag`) is not in word position (WR-01).
-            prev_was_ws_or_start = false;
-            continue;
-        }
-        if b == b')' && !state.in_double_quote {
-            if state.cmd_sub_depth > 0 {
-                state.cmd_sub_depth -= 1;
-            } else if state.subshell_depth > 0 {
-                state.subshell_depth -= 1;
-            }
-            i += 1;
-            prev_was_ws_or_start = false;
-            continue;
-        }
-        // A top-level `#` in word position starts a comment (CR-03).
-        if b == b'#' && state.at_top_level() && prev_was_ws_or_start {
-            return true;
-        }
-        // CR-01: unquoted pathname/glob metacharacters `*` / `?` / `[` at top
-        // level. bash pathname-expands these; `lacon run` (no shell hop) cannot,
-        // and `quote_for_shell` would single-quote them into literals (`ls *.rs`
-        // → `ls '*.rs'`). Pass the segment through byte-exact instead.
-        if (b == b'*' || b == b'?' || b == b'[') && state.at_top_level() {
-            return true;
-        }
-        // CR-01: a leading `~` in word position (start-of-segment or after
-        // whitespace) at top level is tilde expansion (`~`, `~/.config`, `~user`).
-        // bash expands it to a home directory; the wrap form would single-quote it
-        // into the literal `~`. (A `~` mid-token, e.g. `a~b`, is not tilde
-        // expansion, so `prev_was_ws_or_start` gates this correctly.)
-        if b == b'~' && state.at_top_level() && prev_was_ws_or_start {
-            return true;
-        }
-        // Track word-position for the `#` / `~` tests above.
-        prev_was_ws_or_start = b == b' ' || b == b'\t' || b == b'\n';
-        i += 1;
-    }
-    false
+/// True for a single byte that is inert in the shell at top level AND survives a
+/// `quote_for_shell` round-trip: ASCII alphanumerics plus the curated inert
+/// punctuation set `/ . - _ = : @ , + %`. Every other byte is treated as
+/// potentially shell-significant and must make the segment fall out of the
+/// [`is_wrap_safe`] allowlist. Kept tiny and branch-cheap for the hot path.
+#[inline]
+fn is_safe_literal_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric()
+        || matches!(
+            b,
+            b'/' | b'.' | b'-' | b'_' | b'=' | b':' | b'@' | b',' | b'+' | b'%'
+        )
 }
 
 /// Scan a heredoc delimiter word starting at byte `start`. Handles bare,
@@ -848,37 +642,14 @@ mod tests {
         assert_eq!(segs[0].text, "a | b");
     }
 
-    #[test]
-    fn has_top_level_pipe_detects_bare_pipe() {
-        assert!(has_top_level_pipe("echo hi | grep h"));
-        assert!(has_top_level_pipe("a|b"));
-    }
-
-    #[test]
-    fn has_top_level_pipe_ignores_no_pipe() {
-        assert!(!has_top_level_pipe("echo hi"));
-        assert!(!has_top_level_pipe("ls -la"));
-    }
-
-    #[test]
-    fn has_top_level_pipe_ignores_quoted_pipe() {
-        assert!(!has_top_level_pipe("echo 'a | b'"));
-        assert!(!has_top_level_pipe("echo \"a | b\""));
-    }
-
-    #[test]
-    fn has_top_level_pipe_ignores_pipe_in_subshell_and_cmdsub() {
-        assert!(!has_top_level_pipe("echo $(a | b)"));
-        assert!(!has_top_level_pipe("(a | b)"));
-        assert!(!has_top_level_pipe("echo `a | b`"));
-    }
-
-    #[test]
-    fn has_top_level_pipe_ignores_or_or() {
-        // A single segment never holds a top-level `||` (split_chain would have
-        // split), but guard the predicate anyway.
-        assert!(!has_top_level_pipe("a || b"));
-    }
+    // NOTE (iteration 4): the former `has_top_level_pipe` predicate (and its five
+    // unit tests) were removed when the wrap gate was inverted from a denylist to
+    // the `is_wrap_safe` allowlist. The allowlist rejects `|` (it is not a safe
+    // literal byte and is not inside a quoted span), so a pipelined segment such
+    // as `echo hi | grep h` is no longer wrap-safe and passes through byte-exact —
+    // the exact behavior the pipe guard provided. The pipe-passthrough invariant
+    // is now exercised by `is_wrap_safe` rejection tests below and by the
+    // `pipe_in_segment_preserved_not_split` e2e regression.
 
     // ── CR-04: `${...}` parameter expansion is opaque in the splitter ──────────
 
@@ -910,118 +681,172 @@ mod tests {
         assert_eq!(segs[1].text, "b");
     }
 
-    #[test]
-    fn has_top_level_pipe_ignores_pipe_in_param_expansion() {
-        assert!(!has_top_level_pipe("echo ${x:-a | b}"));
-    }
-
-    // ── CR-01..CR-03 / WR-02: has_unwrappable_construct ───────────────────────
-
-    #[test]
-    fn unwrappable_detects_redirections() {
-        assert!(has_unwrappable_construct("echo hi > out.txt"));
-        assert!(has_unwrappable_construct("echo hi >> out.txt"));
-        assert!(has_unwrappable_construct("cat < in.txt"));
-        assert!(has_unwrappable_construct("cmd 2> err.log"));
-        assert!(has_unwrappable_construct("cmd &> all.log"));
-        assert!(has_unwrappable_construct("cat <<<word"));
-    }
+    // ── CR-01 (iteration 4): is_wrap_safe ALLOWLIST ───────────────────────────
+    //
+    // The wrap gate is now a positive allowlist: a segment is wrappable ONLY when
+    // it is provably reproducible by `argv_for_resolution` → `quote_for_shell`.
+    // ACCEPT rows are plain commands composed of safe-literal bytes + quoted
+    // *literal* spans; REJECT rows carry any shell expansion / operator / redirect
+    // / comment / escape the wrap form cannot reproduce.
 
     #[test]
-    fn unwrappable_detects_command_substitution() {
-        assert!(has_unwrappable_construct("echo $(whoami)"));
-        assert!(has_unwrappable_construct("echo `whoami`"));
-    }
-
-    #[test]
-    fn unwrappable_detects_process_substitution() {
-        assert!(has_unwrappable_construct("diff <(a) <(b)"));
-    }
-
-    #[test]
-    fn unwrappable_detects_param_expansion() {
-        assert!(has_unwrappable_construct("echo ${HOME}"));
-        assert!(has_unwrappable_construct("echo ${x:-default}"));
+    fn wrap_safe_accepts_plain_commands() {
+        // The canonical wrappable shapes from real usage.
+        assert!(is_wrap_safe("cargo build --release"));
+        assert!(is_wrap_safe("pytest -k foo"));
+        assert!(is_wrap_safe("eslint ."));
+        assert!(is_wrap_safe("npm run test:unit"));
+        assert!(is_wrap_safe("cmd --features=a,b,c"));
+        assert!(is_wrap_safe("KEY=value cmd"));
+        assert!(is_wrap_safe("echo hi"));
+        assert!(is_wrap_safe("ls -la /tmp"));
+        // Inert punctuation from the safe-literal set: `/ . - _ = : @ , + %`.
+        assert!(is_wrap_safe("docker run img:tag"));
+        assert!(is_wrap_safe("cmd a@host"));
+        assert!(is_wrap_safe("printf 100%"));
+        assert!(is_wrap_safe("cc -O2 +x"));
     }
 
     #[test]
-    fn unwrappable_detects_top_level_comment() {
-        assert!(has_unwrappable_construct("echo hi # do thing"));
-        assert!(has_unwrappable_construct("# whole line comment"));
+    fn wrap_safe_accepts_quoted_literal_spans() {
+        // Single-quoted spans are always literal/safe; argv_for_resolution keeps
+        // the inner bytes (incl. whitespace) in one token and quote_for_shell
+        // re-single-quotes them faithfully.
+        assert!(is_wrap_safe("echo 'literal text'"));
+        // Double-quoted *literal* spans (no $ / backtick / backslash) are safe:
+        // they only suppress word splitting on already-inert bytes.
+        assert!(is_wrap_safe("echo \"literal text\""));
+        assert!(is_wrap_safe("git commit -m \"msg\""));
+        // A `|` / `*` / `~` inside a quoted span is literal → still wrap-safe.
+        assert!(is_wrap_safe("echo 'a | b'"));
+        assert!(is_wrap_safe("echo \"a * b\""));
+        // Adjacent-quote glue round-trips (argv: ["echo","abc"]).
+        assert!(is_wrap_safe("echo a'b'c"));
     }
 
     #[test]
-    fn unwrappable_detects_escaped_whitespace() {
-        // `echo a\ b` is one argument in bash; argv_for_resolution would split it.
-        assert!(has_unwrappable_construct("echo a\\ b"));
+    fn wrap_safe_rejects_variable_expansion() {
+        // Bare / positional / special-param expansion: quote_for_shell would
+        // single-quote-neutralize it, so the wrap cannot reproduce the expansion.
+        assert!(!is_wrap_safe("echo $HOME"));
+        assert!(!is_wrap_safe("echo ${x}"));
+        assert!(!is_wrap_safe("echo $1"));
+        assert!(!is_wrap_safe("echo $?"));
+        assert!(!is_wrap_safe("echo $@"));
+        assert!(!is_wrap_safe("cargo build $FLAGS"));
+        // `$` expands inside double quotes too — a double-quoted span with `$` is
+        // NOT a literal span, so it is rejected.
+        assert!(!is_wrap_safe("echo \"$HOME\""));
     }
 
     #[test]
-    fn unwrappable_ignores_plain_commands() {
-        assert!(!has_unwrappable_construct("echo hi"));
-        assert!(!has_unwrappable_construct("ls -la /tmp"));
-        assert!(!has_unwrappable_construct("git commit -m \"msg\""));
-        // A `#` glued mid-token is NOT a comment (word position matters).
-        assert!(!has_unwrappable_construct("echo a#b"));
-    }
-
-    // ── CR-01: every shell expansion quote_for_shell neutralizes is unwrappable ─
-
-    #[test]
-    fn unwrappable_detects_bare_variable_expansion() {
-        // A bare `$` (not `${`/`$(`) is a variable / positional / special-param
-        // expansion. quote_for_shell single-quotes it, so the wrap would print the
-        // literal token instead of the expansion bash performs. Corrected posture:
-        // these are UNwrappable (iter-1 wrongly asserted `echo $var` was wrappable).
-        assert!(has_unwrappable_construct("echo $var"));
-        assert!(has_unwrappable_construct("echo $HOME"));
-        assert!(has_unwrappable_construct("echo $1"));
-        assert!(has_unwrappable_construct("echo $?"));
-        assert!(has_unwrappable_construct("echo $@"));
-        assert!(has_unwrappable_construct("cargo build $FLAGS"));
-        // `$` expands inside double quotes too (`"$HOME"`), so it is unwrappable.
-        assert!(has_unwrappable_construct("echo \"$HOME\""));
+    fn wrap_safe_rejects_command_and_process_substitution() {
+        assert!(!is_wrap_safe("echo $(whoami)"));
+        assert!(!is_wrap_safe("echo `id`"));
+        assert!(!is_wrap_safe("diff <(a) <(b)"));
     }
 
     #[test]
-    fn unwrappable_detects_glob_metacharacters() {
-        assert!(has_unwrappable_construct("ls *.rs"));
-        assert!(has_unwrappable_construct("echo *"));
-        assert!(has_unwrappable_construct("ls file?.txt"));
-        assert!(has_unwrappable_construct("ls [abc].txt"));
-        assert!(has_unwrappable_construct("grep foo src/*"));
+    fn wrap_safe_rejects_globs_and_brace_expansion() {
+        // The case the denylist kept missing: brace expansion.
+        assert!(!is_wrap_safe("ls src/{a,b}.js"));
+        assert!(!is_wrap_safe("echo {1..10}"));
+        assert!(!is_wrap_safe("eslint src/{a,b}.js"));
+        // Pathname globs.
+        assert!(!is_wrap_safe("ls *.rs"));
+        assert!(!is_wrap_safe("echo *"));
+        assert!(!is_wrap_safe("ls file?.txt"));
+        assert!(!is_wrap_safe("ls [abc].txt"));
+        assert!(!is_wrap_safe("grep foo src/*"));
     }
 
     #[test]
-    fn unwrappable_detects_tilde_expansion() {
-        assert!(has_unwrappable_construct("echo ~"));
-        assert!(has_unwrappable_construct("ls ~/.config"));
-        assert!(has_unwrappable_construct("echo ~user"));
-        // A `~` mid-token is NOT tilde expansion (word position matters).
-        assert!(!has_unwrappable_construct("echo a~b"));
+    fn wrap_safe_rejects_tilde_expansion() {
+        assert!(!is_wrap_safe("echo ~"));
+        assert!(!is_wrap_safe("ls ~/.config"));
+        assert!(!is_wrap_safe("echo ~user"));
     }
 
     #[test]
-    fn unwrappable_ignores_constructs_inside_single_quotes() {
-        // Inside single quotes everything is literal and faithfully reproduced.
-        assert!(!has_unwrappable_construct("echo '> not a redirect'"));
-        assert!(!has_unwrappable_construct("echo '$(not a sub)'"));
-        assert!(!has_unwrappable_construct("echo '# not a comment'"));
+    fn wrap_safe_rejects_redirections() {
+        assert!(!is_wrap_safe("echo hi > out.txt"));
+        assert!(!is_wrap_safe("echo hi >> out.txt"));
+        assert!(!is_wrap_safe("cat < in.txt"));
+        assert!(!is_wrap_safe("cmd 2> err.log"));
+        assert!(!is_wrap_safe("cmd &> all.log"));
+        assert!(!is_wrap_safe("cat <<<word"));
     }
 
-    // ── WR-01: word-position flag must not stay stale after a closed construct ──
+    #[test]
+    fn wrap_safe_rejects_operators_comments_and_escapes() {
+        // Pipe (subsumes the former has_top_level_pipe guard).
+        assert!(!is_wrap_safe("a | b"));
+        // Background / job-control.
+        assert!(!is_wrap_safe("a & b"));
+        // Comment in word position.
+        assert!(!is_wrap_safe("a # c"));
+        assert!(!is_wrap_safe("echo hi # do thing"));
+        assert!(!is_wrap_safe("# whole line comment"));
+        // Escaped whitespace would re-tokenize into two args.
+        assert!(!is_wrap_safe("echo a\\ b"));
+        // History expansion / negation.
+        assert!(!is_wrap_safe("echo !x"));
+        // Semicolon and parens (a wrapped segment never legitimately holds these,
+        // but the allowlist must reject them defensively).
+        assert!(!is_wrap_safe("a ; b"));
+        assert!(!is_wrap_safe("(true)"));
+    }
 
     #[test]
-    fn unwrappable_glued_hash_after_closed_construct_is_not_a_comment() {
-        // A `#` glued immediately after a `)` (closing a subshell) or a `}`
-        // (closing a `${...}` opened inside a subshell) is NOT in word position,
-        // so it must NOT be treated as a comment. Before the WR-01 fix the
-        // word-position flag was stale-`true` after the closing byte because the
-        // `(` / `)` / `${...}`-interior branches `continue`d without clearing it,
-        // causing a false-positive "comment" → over-conservative unwrappable.
-        // None of these contain `$`/`~`/glob at top level, so CR-01 does not flag
-        // them either; the only special is the glued `#`.
-        assert!(!has_unwrappable_construct("(echo x )#tag"));
-        assert!(!has_unwrappable_construct("(echo ${x} )#tag"));
+    fn wrap_safe_rejects_empty_and_whitespace_only() {
+        // Nothing to wrap.
+        assert!(!is_wrap_safe(""));
+        assert!(!is_wrap_safe("   "));
+        assert!(!is_wrap_safe("\t "));
+    }
+
+    #[test]
+    fn wrap_safe_rejects_unterminated_and_unsafe_quoted_spans() {
+        // Unterminated quotes are malformed → not wrap-safe.
+        assert!(!is_wrap_safe("echo 'unterminated"));
+        assert!(!is_wrap_safe("echo \"unterminated"));
+        // Double-quoted span carrying an escape or backtick is not a literal span.
+        assert!(!is_wrap_safe("echo \"a\\nb\""));
+        assert!(!is_wrap_safe("echo \"`id`\""));
+    }
+
+    #[test]
+    fn wrap_safe_rejects_non_ascii_and_control_bytes() {
+        // A multi-byte UTF-8 char outside a quoted span is not in the allowlist
+        // (conservative: pass through byte-exact rather than risk a mis-quote).
+        assert!(!is_wrap_safe("echo café"));
+        // But inside a single-quoted span it is literal/safe.
+        assert!(is_wrap_safe("echo 'café'"));
+        // Embedded newline at top level is unsafe.
+        assert!(!is_wrap_safe("echo a\nb"));
+    }
+
+    // Retained for documentation: the historical denylist examples now map onto
+    // the allowlist verdicts above. A `#` glued mid-token (`a#b`) used to need a
+    // word-position carve-out; under the allowlist `#` is simply never a safe
+    // literal byte, so `a#b` is uniformly NOT wrap-safe (still the safe
+    // direction: pass through byte-exact).
+    #[test]
+    fn wrap_safe_glued_hash_is_not_wrappable() {
+        assert!(!is_wrap_safe("echo a#b"));
+    }
+
+    #[test]
+    fn wrap_safe_treats_quoted_dangerous_bytes_as_literal() {
+        // Inside a single-quoted span every byte is literal and faithfully
+        // reproduced by argv_for_resolution → quote_for_shell, so a `>` / `$` / `#`
+        // there does NOT make the segment unsafe (the surrounding command is still
+        // a plain wrappable invocation).
+        assert!(is_wrap_safe("echo '> not a redirect'"));
+        assert!(is_wrap_safe("echo '$(not a sub)'"));
+        assert!(is_wrap_safe("echo '# not a comment'"));
+        // Same for a double-quoted *literal* span (no $ / backtick / backslash).
+        assert!(is_wrap_safe("echo \"> not a redirect\""));
+        assert!(is_wrap_safe("echo \"# not a comment\""));
     }
 }
