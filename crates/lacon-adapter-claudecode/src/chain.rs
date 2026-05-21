@@ -361,7 +361,7 @@ pub fn has_top_level_pipe(segment: &str) -> bool {
                         content_start += 1;
                     }
                 }
-                if &segment[content_start..line_end] == ctx.delimiter {
+                if segment[content_start..line_end] == ctx.delimiter {
                     state.in_heredoc = None;
                     i = line_end;
                     continue;
