@@ -21,6 +21,7 @@ If filtering accuracy or cold-start budget fails, the project fails. Everything 
 - **Engine + `lacon run` wrapper** (Phase 1) — streaming pipeline, 10 native primitives, Starlark `post_process`, rule loading/`extends`, `on_error` swap, `max_bytes` cap, `lacon validate`.
 - **Local tracking** (Phase 2) — SQLite at `~/.local/share/lacon/history.db` with the v1 privacy contract, four views, startup pruning, cold-start budget held.
 - **Claude Code adapter + `lacon init`** (Phase 3) — `lacon-claude-hook` `PreToolUse` binary (chain split → TUI bypass → per-segment rule resolve → wrap), `lacon init` installs the hook + `.lacon/` skeleton + CLAUDE.md block. Closes REQ-adapter-pretooluse-only, -bypass-detection, -chained-commands, -tui-bypass, -pipes-passthrough, REQ-cli-init. Wrap-eligibility is a positive `is_wrap_safe` allowlist: only provably-literal segments are wrapped; any shell-active construct (vars, globs, brace expansion, redirections, pipes, `~`) passes through byte-exact.
+- **CLI completion — `stats` / `explain` / `doctor`** (Phase 4) — closes REQ-cli-stats, -explain, -doctor, -surface-cap. New read-only `lacon-core::tracking::query` API + `open_readonly` (read-only WAL open, never migrates/prunes/writes — Wave-0 spike confirmed strict `SQLITE_OPEN_READ_ONLY` works); `Runner::filter_bytes` subprocess-free byte-replay (ADR-0010 branch fidelity) powers `explain`'s side-by-side raw/filtered render (raw column byte-exact, filtered column sanitized). Filters (`--project`/`--since`/`--rule`) re-query the base `invocations` table since the four views lack `ts`/project columns. `doctor` runs a fixed five-check sweep over existing core surfaces; the six-command surface cap is locked by `cli_surface.rs`. All SQL stays behind the lacon-core boundary (CLI keeps `rusqlite` dev-only). Verification 4/4; code review 0 blockers / 5 warnings all fixed.
 
 ### Active
 
@@ -29,7 +30,7 @@ v1 scope. See `.planning/REQUIREMENTS.md` for the full list with REQ-IDs grouped
 - 8 engine requirements (streaming primitives, Starlark `post_process`, rule loading, `extends`, `on_error`, `rewrite`, bypass mechanics, `max_bytes` cap)
 - 5 Claude Code adapter requirements (PreToolUse-only, bypass detection, chained-command splitting, TUI bypass, pipes passthrough)
 - 5 tracking requirements (SQLite location, schema, raw-outputs default-off, privacy warning, retention defaults)
-- 7 CLI surface requirements (`init`, `run`, `stats`, `explain`, `doctor`, `validate`, six-command surface cap)
+- ~~7 CLI surface requirements~~ — **all shipped** (`init`/`run`/`validate` in Phases 1–3, `stats`/`explain`/`doctor` + six-command surface cap in Phase 4)
 - 2 bundled-rule requirements (Tier 1 ten-rule library, fixture/test format)
 - 6 v1 acceptance criteria (≥50% bundled reduction, end-to-end `pnpm install` flow, <10ms cold start, `explain` reproducibility, hot-reload without restart, hermetic test coverage)
 - 3 documentation requirements (README + quickstart, worked example, primitive reference)
@@ -145,4 +146,4 @@ All 13 ADRs are LOCKED (`status: Accepted`) and form an internally consistent ad
 | **ADR-0013** — Filter via PreToolUse-rewritten subprocess wrapper | Empirical probe 2026-05-05 confirmed `PostToolUse` cannot replace tool output. `lacon run --rule <id> -- <cmd>` spawns subprocess, merges stderr into stdout, runs pipeline (or `on_error`), writes filtered bytes to its own stdout, exits with subprocess's exit code. ADDITIVE — narrows ADR-0001 only on execution location; no prior ADR is amended. | LOCKED |
 
 ---
-*Last updated: 2026-05-21 after Phase 3 (Claude Code adapter & `lacon init`) completed — verification passed 9/9, code review resolved (denylist→`is_wrap_safe` allowlist inversion).*
+*Last updated: 2026-05-22 after Phase 4 (CLI completion — `stats`/`explain`/`doctor`) completed — verification passed 4/4, code review 0 blockers / 5 warnings all fixed. The full six-command CLI surface now ships; remaining v1 work is bundled Tier 1 rules (Phase 5) and the ship gate + docs (Phase 6).*
