@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: "Completed 04-02-PLAN.md (Runner::filter_bytes)"
-last_updated: "2026-05-21T22:26:03.223Z"
+status: ready_to_plan
+stopped_at: Phase 04 complete (4/4) — ready to discuss Phase 5
+last_updated: 2026-05-21T22:46:08.287Z
 last_activity: 2026-05-21
 progress:
   total_phases: 6
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-06)
 
 **Core value:** Reduce the bytes an AI coding assistant ingests from bash output by 30–70% without dropping signal — locally, with sub-10ms cold start, and a YAML rule per command.
-**Current focus:** Phase 04 — CLI completion (stats, explain, doctor)
+**Current focus:** Phase 5 — bundled tier 1 rules
 
 ## Current Position
 
-Phase: 04 (CLI completion (stats, explain, doctor)) — EXECUTING
-Plan: 4 of 4
-Status: Phase complete — ready for verification
+Phase: 5
+Plan: Not started
+Status: Ready to plan
 Last activity: 2026-05-21
 
 Progress: [██████████] 100%
@@ -36,7 +36,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 5
+- Total plans completed: 9
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -45,6 +45,7 @@ Progress: [██████████] 100%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 03 | 5 | - | - |
+| 04 | 4 | - | - |
 
 **Recent Trend:**
 
