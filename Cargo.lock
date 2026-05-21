@@ -1183,6 +1183,7 @@ dependencies = [
  "predicates",
  "regex",
  "rusqlite",
+ "serde_json",
  "tempfile",
  "test_emitter",
 ]

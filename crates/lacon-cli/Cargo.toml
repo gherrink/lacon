@@ -15,6 +15,10 @@ clap = { workspace = true }
 anyhow = { workspace = true }
 regex = { workspace = true }
 etcetera = { workspace = true }
+# Phase 3 Plan 05: `lacon init` parses/writes `.claude/settings.json` via
+# serde_json::Value (D-11) and writes it atomically via tempfile (D-13).
+serde_json = { workspace = true }
+tempfile = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = { workspace = true }
