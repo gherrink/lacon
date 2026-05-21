@@ -21,6 +21,7 @@ pub mod privacy;
 pub mod health;
 pub mod prune;
 pub mod record;
+pub mod query;
 
 pub use normalize::normalize;
 pub use migrations::migrate;
