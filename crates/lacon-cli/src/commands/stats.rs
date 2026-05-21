@@ -24,11 +24,7 @@ use lacon_core::tracking::{self, query};
 
 /// Exit codes (documented for the SUMMARY): 0 success, 2 bad CLI input
 /// (malformed `--since`). The empty-DB path is a success (0), not an error.
-pub fn execute(
-    project: Option<PathBuf>,
-    since: Option<String>,
-    rule: Option<String>,
-) -> anyhow::Result<i32> {
+pub fn execute(project: Option<PathBuf>, since: Option<String>, rule: Option<String>) -> anyhow::Result<i32> {
     // ─── Resolve --since to an absolute cutoff in unix MILLISECONDS (D-10) ───
     // ts is unix ms (tracking-data-model.md); cutoff = now_ms - n*unit_ms.
     let cutoff_ms: Option<i64> = match since.as_deref() {
