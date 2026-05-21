@@ -72,7 +72,7 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
 **Plans**: 5 plans
 - [x] 03-01-PLAN.md — Crate scaffolding: serde_json workspace dep + lacon-claude-hook bin target + typed protocol structs + match_argv_via_load_all promoted to lacon-core
 - [x] 03-02-PLAN.md — Chain splitter DFA in chain.rs + 13-scenario test matrix + 2 pathological-input tests
-- [ ] 03-03-PLAN.md — TUI heuristic (tui.rs, 30-row table) + apply_rewrite (lacon-core::rules::rewrite, 10 idempotency tests) + quote_for_shell (quote.rs, 11 POSIX round-trip tests)
+- [x] 03-03-PLAN.md — TUI heuristic (tui.rs, 30-row table) + apply_rewrite (lacon-core::rules::rewrite, 10 idempotency tests) + quote_for_shell (quote.rs, 11 POSIX round-trip tests)
 - [ ] 03-04-PLAN.md — run_hook orchestration in lib.rs + bin/hook.rs response emit + hook_e2e (9 tests covering all 5 adapter REQs + Phase 2 env-var contract) + cold_start.rs hook scenarios
 - [ ] 03-05-PLAN.md — lacon init: settings.json walker + CLAUDE.md marker block + .lacon skeleton + 4 cli_init tests (create/idempotent/preserve-user-hooks/drop-old-lacon-entries)
 
@@ -121,7 +121,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 5 (bundl
 |-------|----------------|--------|-----------|
 | 1. Engine core & `lacon run` wrapper | 8/8 | Complete   | 2026-05-06 |
 | 2. Local tracking | 4/6 | In Progress|  |
-| 3. Claude Code adapter & `lacon init` | 2/5 | In Progress|  |
+| 3. Claude Code adapter & `lacon init` | 3/5 | In Progress|  |
 | 4. CLI completion (`stats`, `explain`, `doctor`) | 0/TBD | Not started | - |
 | 5. Bundled Tier 1 rules | 0/TBD | Not started | - |
 | 6. v1 ship gate — acceptance & docs | 0/TBD | Not started | - |
