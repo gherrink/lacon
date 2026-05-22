@@ -1,0 +1,20 @@
+command: eslint .
+exit_code: 1
+tool_version: "eslint 10.4.0"
+captured_at: 2026-05-22
+os: linux
+exempt_from_reduction_check: true
+must_keep_lines:
+  - "error"
+  - "no-unused-vars"
+notes: >-
+  PRIMARY fixture. eslint is NOT installed locally — captured via
+  `NO_COLOR=1 npx -p eslint eslint .` in a throwaway node project (flat config,
+  `no-unused-vars: error` + `no-console: warn`) against a file with 3 unused-var
+  errors and 1 console warning. Default "stylish" formatter. Exit 1 is the actual
+  observed code (eslint returns 1 when errors are present). The absolute scratch
+  temp-dir prefix in the file-path header was anonymized to the bare `bad.js`.
+  Reduction is exempt because a single-file capture has no per-file PASS lines to
+  drop, so the ≥50% floor is structurally unachievable; the keep_around_match
+  preserves the path header above each error/warning detail line. Error survival
+  is proven via must_keep_lines (`error` + `no-unused-vars`).

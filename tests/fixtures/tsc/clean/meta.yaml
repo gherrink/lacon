@@ -1,0 +1,12 @@
+command: tsc --noEmit
+exit_code: 0
+tool_version: "typescript 6.0.3"
+captured_at: 2026-05-22
+os: linux
+exempt_from_reduction_check: true
+notes: >-
+  tsc emits nothing on clean success (exit 0, zero output). Captured via
+  `npx -p typescript tsc --noEmit --pretty false` against an error-free .ts file.
+  input.txt is empty; the success pipeline produces empty output. Exempt from the
+  reduction check because there is no input to reduce — this fixture documents the
+  zero-output success path.
