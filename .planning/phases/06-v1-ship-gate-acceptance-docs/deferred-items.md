@@ -6,7 +6,34 @@ current task's changes).
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| test-infra (pre-existing) | `lacon-cli` integration tests fail with `CARGO_BIN_EXE_test_emitter is unset` | Open — blocks `cargo test --workspace` going green | Plan 06-02, Task 3 |
+| test-infra (pre-existing) | `lacon-cli` integration tests fail with `CARGO_BIN_EXE_test_emitter is unset` on a clean checkout | ✅ Resolved (Phase 6 post-merge gate) — CI now builds debug bins before the test sweep; see resolution note below | Plan 06-02, Task 3 |
+
+## ✅ Resolution (Phase 6 post-merge gate, 2026-05-22)
+
+**Corrected root cause.** assert_cmd 2.2.1's `cargo_bin(name)` is NOT a hard
+`CARGO_BIN_EXE`-only lookup — `cargo.rs:235-241` falls back to `legacy_cargo_bin`,
+which resolves `target/debug/<name>` when the env var is unset (the env var is
+never set for *cross-package* bins on stable; artifact deps that would set it
+need unstable `-Zbindeps`, confirmed rejected on rustc 1.95). The panic fires
+only when that debug binary is **absent**. The real defect was build-order /
+profile: `cargo test --workspace` builds test harnesses, not the top-level
+`target/debug/<bin>`, and the CI's `cargo build --release` lands bins in
+`target/release/`. On a fresh checkout `target/debug/test_emitter` (and
+`target/debug/lacon-claude-hook`) therefore never exist when the lacon-cli e2e
+tests run → fallback fails → panic. Warm dev trees masked it because a prior
+`cargo build` had populated `target/debug/`.
+
+**Fix.** `.github/workflows/ci.yml` now runs a debug `cargo build --workspace`
+step (materializing `target/debug/<bin>`) immediately before
+`cargo test --workspace`. Hermetic (pre-installed toolchain, no fetches).
+Verified from a clean state: `cargo build --workspace && cargo test --workspace`
+→ 448 passed, 0 failed, exit 0, no panics. SC4's "CI hermetic test suite green"
+clause is now satisfied.
+
+**Optional future hardening (not required for v1):** when artifact dependencies
+(`artifact = "bin"`) stabilize, declaring `test_emitter` / `lacon-claude-hook`
+that way would set `CARGO_BIN_EXE_*` and make a fresh `cargo test --workspace`
+self-contained without the preceding build step.
 
 ## Detail: `CARGO_BIN_EXE_test_emitter` unset (pre-existing)
 

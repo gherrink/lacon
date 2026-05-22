@@ -54,6 +54,18 @@ jobs:
       - name: Build (release)
         run: cargo build --release
 
+      # The lacon-cli integration tests resolve helper/CLI binaries
+      # (`test_emitter`, `lacon-claude-hook`) at runtime via
+      # `assert_cmd::cargo::cargo_bin`, which falls back to `target/debug/<name>`
+      # when `CARGO_BIN_EXE_<name>` is unset (it is, for cross-package bins on
+      # stable — artifact deps need unstable `-Zbindeps`). `cargo test` builds
+      # only the test harnesses, NOT the top-level debug bins, and the release
+      # build above lands in `target/release/`. So build the workspace once in
+      # debug to materialize `target/debug/<bin>` before the test sweep.
+      # Hermetic — pre-installed toolchain only, no fetches.
+      - name: Build (debug, materialize bins for assert_cmd resolution)
+        run: cargo build --workspace
+
       # Hermetic test sweep: runs only the default (non-ignored) test set,
       # keeping the interactive signal test and the real-pnpm test out of CI
       # (Pitfall 3 / supply chain).
