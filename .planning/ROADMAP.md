@@ -15,7 +15,7 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
 - [x] **Phase 3: Claude Code adapter & `lacon init`** - `PreToolUse` hook with chained-command splitting, TUI bypass, bypass detection, and one-shot project setup (completed 2026-05-21)
 - [x] **Phase 4: CLI completion (`stats`, `explain`, `doctor`)** - Introspection commands backed by tracking data plus the six-command surface cap (completed 2026-05-21)
 - [x] **Phase 5: Bundled Tier 1 rules** - Ten YAML rules with success/failure fixtures and integration tests asserting ≥50% reduction with zero error-line drops (completed 2026-05-22)
-- [ ] **Phase 6: v1 ship gate — acceptance & docs** - End-to-end acceptance validation (cold start, hot reload, `pnpm` E2E, `explain` reproducibility, hermetic test coverage) plus README, worked example, and primitive reference
+- [x] **Phase 6: v1 ship gate — acceptance & docs** - End-to-end acceptance validation (cold start, hot reload, `pnpm` E2E, `explain` reproducibility, hermetic test coverage) plus README, worked example, and primitive reference (completed 2026-05-22)
 
 ## Phase Details
 
@@ -124,9 +124,9 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
   4. CI is hermetic — it never installs `pnpm`/`cargo`/`vitest`/etc. — and the test suite covers each native primitive, the chained-command splitter (13 scenarios), and every bundled rule via fixture-based integration tests.
   5. README (install + quickstart), worked example (writing a project-specific filter rule), and primitive reference (one example per primitive) ship in the repo and link from the project root.
 **Plans**: 3 plans
-- [ ] 06-01-PLAN.md — Acceptance audit (REQ→test map) + explain byte-equality + hot-reload proof + hermetic & #[ignore] pnpm E2E (D-01..D-03, D-06, D-07)
-- [ ] 06-02-PLAN.md — tracker_open steady-state split + cold-start benchmark entry point + hermetic ubuntu/macos CI (D-04, D-05, D-08, D-09)
-- [ ] 06-03-PLAN.md — Docs: README install+quickstart rewrite + worked example + primitive reference (D-10)
+- [x] 06-01-PLAN.md — Acceptance audit (REQ→test map) + explain byte-equality + hot-reload proof + hermetic & #[ignore] pnpm E2E (D-01..D-03, D-06, D-07)
+- [x] 06-02-PLAN.md — tracker_open steady-state split + cold-start benchmark entry point + hermetic ubuntu/macos CI (D-04, D-05, D-08, D-09)
+- [x] 06-03-PLAN.md — Docs: README install+quickstart rewrite + worked example + primitive reference (D-10)
 
 ## Progress
 
@@ -140,4 +140,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 5 (bundl
 | 3. Claude Code adapter & `lacon init` | 5/5 | Complete   | 2026-05-21 |
 | 4. CLI completion (`stats`, `explain`, `doctor`) | 4/4 | Complete   | 2026-05-21 |
 | 5. Bundled Tier 1 rules | 9/9 | Complete    | 2026-05-22 |
-| 6. v1 ship gate — acceptance & docs | 0/3 | Not started | - |
+| 6. v1 ship gate — acceptance & docs | 3/3 | Complete   | 2026-05-22 |
