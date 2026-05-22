@@ -1,21 +1,23 @@
 ---
 phase: 06-v1-ship-gate-acceptance-docs
-verified: 2026-05-22T10:10:00Z
-status: human_needed
+verified: 2026-05-22T17:42:00Z
+status: verified
 score: 9/9 must-haves verified
 overrides_applied: 0
-human_verification:
+human_verification_resolved:
   - test: "Run CI on GitHub Actions on a real macos-latest runner and confirm the cold_start_probe produces a macOS min-of-N wall-clock table row. Check that the run does NOT install pnpm/npm/brew/pip/apt and that both ubuntu-latest and macos-latest lanes go green."
     expected: "Both lanes pass; macOS cold_start_probe emits a per-OS-labeled table; no package-manager fetch step fires; tracker_open criterion bench exits 0 on both lanes."
-    why_human: "The macOS CI lane has never been executed — the dev machine is Linux-only. The _(CI macos-latest)_ cells in docs/architecture.md are explicitly labeled as awaiting a first real CI run. Cannot verify macOS wall-clock numbers or macOS lane hermeticity programmatically from the local dev tree."
+    result: passed
+    verified: 2026-05-22T17:42:00Z
+    evidence: "First macos-latest GitHub Actions run on 2026-05-22. cold_start_probe emitted a per-OS table on both lanes (header '# Cold-start measurements (macos, 50 samples per scenario)' and '(linux, ...)'). macOS lazy-open paths: --version 1953µs min / 2009µs median, validate 2094µs min / 2172µs median; hook wall-clock ~11ms median (spawn-dominated, soft-reported, non-gated per the architecture.md footnote). Because cold_start_probe runs after the tracker_open hard gate in ci.yml, both lanes clearing this step proves the tracker_open criterion bench exited 0 on ubuntu-latest and macos-latest. Hermeticity holds by construction — no brew/npm/pnpm/pip/apt step exists in the workflow. The four _(CI macos-latest)_ cells in docs/architecture.md are now filled."
 ---
 
 # Phase 6: v1 Ship Gate — Acceptance & Docs Verification Report
 
 **Phase Goal:** All v1 acceptance criteria pass end-to-end on macOS and Linux and the user-facing documentation set (README, worked example, primitive reference) ships — this is the gate at which v1 is shippable.
-**Verified:** 2026-05-22T10:10:00Z
-**Status:** human_needed
-**Re-verification:** No — initial verification
+**Verified:** 2026-05-22T17:42:00Z
+**Status:** verified
+**Re-verification:** Yes — macOS CI human-verification item resolved 2026-05-22T17:42:00Z from first `macos-latest` GitHub Actions run
 
 ## Goal Achievement
 
@@ -46,7 +48,7 @@ human_verification:
 | `crates/lacon-core/benches/tracker_open.rs` | `fn bench_tracker_open_steady_state`, DB created outside timed loop, hard gate on steady-state | VERIFIED | 177 lines; steady-state variant at line 115; DB created outside loop (line 119-124); `assert!(mean_micros < BUDGET_MICROS)` at line 167; criterion_group registers both at line 175 |
 | `scripts/bench-cold-start.sh` | Executable, `set -euo pipefail`, `cargo build --release`, runs `cold_start_probe` | VERIFIED | 47 lines; `-euo pipefail` at line 30; `cargo build --release` at line 41; `cargo run --release --bin cold_start_probe` at line 46; executable bit confirmed |
 | `.github/workflows/ci.yml` | Valid YAML, ubuntu + macos lanes, no install steps, `actions/checkout@v4` | VERIFIED | 83 lines; matrix `os: [ubuntu-latest, macos-latest]`; no forbidden install steps; `permissions: contents: read`; hermeticity contract comment at top |
-| `docs/architecture.md` | Cold-start measurements section with `steady-state`, Linux/macOS table, protocol | VERIFIED | Lines 167-207; literal `steady-state` at line 176; Linux numbers filled (208 µs); macOS cells labeled `_(CI macos-latest)_` by design |
+| `docs/architecture.md` | Cold-start measurements section with `steady-state`, Linux/macOS table, protocol | VERIFIED | Lines 167-207; literal `steady-state` at line 176; Linux numbers filled (208 µs); macOS cells filled 2026-05-22 from first CI run (--version 2009µs median, validate 2172µs median, hook ~11ms) |
 | `README.md` | Install + Quickstart sections, links to worked-example and primitive-reference, no design stub | VERIFIED | Install at line 7; Quickstart at line 24; links to both docs at lines 69-70; no "No installable artifact yet" |
 | `docs/worked-example.md` | `our-monorepo-pnpm`, `extends: bundled/pkg-install`, two `drop_regex`, three inheritance bullets | VERIFIED | 100 lines; all required content present; `lacon validate` at line 83; `lacon explain` at line 95 |
 | `docs/primitive-reference.md` | All 10 primitives, fixture-verified examples, `[lacon: truncated, N more bytes dropped]` marker | VERIFIED | 10 primitive sections confirmed by grep; fixture output matches `tests/fixtures/primitives/*/expected.txt` for strip_ansi, max_bytes, keep_around_match cross-checked |
@@ -92,7 +94,7 @@ No probes of the `scripts/tests/probe-*.sh` conventional form exist in this phas
 |-------------|-------------|-------------|--------|----------|
 | REQ-acceptance-bundled-reduction | 06-01 | All 10 bundled rules reduce ≥50% without dropping errors | SATISFIED | `cargo test --test bundled_rules` green; walker enforces `len(expected)/len(input) <= 0.5` + `must_keep_lines` on all 20 fixtures |
 | REQ-acceptance-pnpm-end-to-end | 06-01 | `lacon init` → pnpm install works end-to-end, hook fires, filtered output reaches assistant | SATISFIED | `pnpm_e2e_hermetic` drives full init→hook-rewrite→run pipeline with `test_emitter` stub and asserts hook rewrite wraps command correctly; `pnpm_e2e_real` exists as `#[ignore]`d opt-in |
-| REQ-acceptance-cold-start-budget | 06-02 | Cold-start invocation under 10ms on hook hot path | SATISFIED (Linux, hard gate) / UNCERTAIN (macOS wall-clock) | Steady-state `Tracker::open` ~210µs vs 3700µs budget (hard gate, both planned OS lanes via CI); wall-clock hook cold-start ~0.3ms actual work (`strace -c`), spawn-dominated measurement overhead ~12ms is documented non-gated; macOS numbers await first CI run |
+| REQ-acceptance-cold-start-budget | 06-02 | Cold-start invocation under 10ms on hook hot path | SATISFIED (both lanes) | Steady-state `Tracker::open` ~210µs vs 3700µs budget (hard gate, exits 0 on both ubuntu-latest and macos-latest CI lanes); wall-clock hook cold-start ~0.3ms actual work (`strace -c`), spawn-dominated measurement overhead ~11–12ms is documented non-gated; macOS numbers filled from first CI run (lazy-open ~2ms, hook wall-clock ~11ms median) |
 | REQ-acceptance-explain-reproducibility | 06-01 | `lacon explain` reproducibly re-derives filtered output byte-for-byte | SATISFIED | `explain_filtered_column_byte_equals_run_output` uses `assert_eq!` on filtered column lines; 6 tests pass |
 | REQ-acceptance-hot-reload | 06-01 | Rule edits take effect on next invocation, no daemon/restart | SATISFIED | `rule_edit_takes_effect_on_next_invocation` performs two fresh-process invocations across mtime-bumped edit; test passes |
 | REQ-acceptance-test-coverage | 06-01, 06-02 | Suite covers primitives, splitter, bundled rules; CI hermetic | SATISFIED | 10 primitive tests, 19 splitter tests (13 spec scenarios), bundled walker (20 fixtures) all green; CI hermetic-by-construction (no install steps, no `--ignored`) |
@@ -107,35 +109,32 @@ No probes of the `scripts/tests/probe-*.sh` conventional form exist in this phas
 | File | Line | Pattern | Severity | Impact |
 |------|------|---------|----------|--------|
 | `docs/primitive-reference.md` | 213 | word "placeholder" | Info | Contextual documentation use — describes the `{count}` template slot in `collapse_repeated.summary`; not a code stub; the example output is fixture-derived |
-| `docs/architecture.md` | 197-200 | `_(CI macos-latest)_` cells | Info | Explicitly labeled as awaiting first macOS CI run; this is the documented measurement protocol (D-09), not missing data; routed to human verification |
+| `docs/architecture.md` | 197-200 | ~~`_(CI macos-latest)_` cells~~ RESOLVED | Info | Cells filled 2026-05-22 from first `macos-latest` CI run (macOS min/median now present); measurement protocol D-09 satisfied |
 
 No TBD / FIXME / XXX debt markers found in any Phase-6 modified file.
 
-### Human Verification Required
+### Human Verification — RESOLVED
 
-#### 1. macOS CI Lane — Cold-Start Numbers and Hermeticity
+#### 1. macOS CI Lane — Cold-Start Numbers and Hermeticity ✅ RESOLVED 2026-05-22T17:42:00Z
 
 **Test:** Push to main (or open a PR) to trigger the GitHub Actions CI workflow at `.github/workflows/ci.yml`. Observe both the `ubuntu-latest` and `macos-latest` lanes.
 
-**Expected:**
-- Both lanes complete green (build + test + tracker_open bench + cold-start probe)
-- `cargo test --workspace` passes on both lanes (448 tests, 0 failed, 2 ignored)
-- `cargo bench -p lacon-core --bench tracker_open` passes on both lanes (steady-state gate clears 3700µs budget)
-- `./scripts/bench-cold-start.sh` runs on both lanes and emits a per-OS-labeled markdown table; no `<10ms` hard-assert failure (it is a soft report)
-- The macOS lane does NOT install pnpm, npm, brew, pip, apt, or any external tool
-- The `_(CI macos-latest)_` cells in `docs/architecture.md` can now be filled with actual macOS min-of-N numbers from the CI run output
-
-**Why human:** The macOS CI lane has never executed — the development machine is Linux-only (confirmed by the dev box running Linux 6.8.0 per SUMMARY and by `strace` runs in the plan). The macOS lane's existence is verified by inspecting ci.yml, but its runtime behavior (binary execution on arm64 M1, Rust compilation, bench output) can only be confirmed by an actual CI run. The macOS cold-start wall-clock numbers in `docs/architecture.md` are explicitly labeled `_(CI macos-latest)_` pending this run.
+**Result: PASSED.** First `macos-latest` GitHub Actions run on 2026-05-22:
+- Both lanes reached the final `cold_start_probe` step, which runs *after* the `tracker_open` hard gate in `ci.yml` — so build + test + `tracker_open` criterion bench all exited 0 on both `ubuntu-latest` and `macos-latest`.
+- `cold_start_probe` emitted a per-OS-labeled markdown table on both lanes (`# Cold-start measurements (macos, …)` / `(linux, …)`); no `<10ms` hard-assert (soft report, as designed).
+- macOS min-of-N numbers: `--version` 1953µs min / 2009µs median; `validate` 2094µs min / 2172µs median; hook passthrough ~11ms min / ~11.9ms median (p95 16.5ms, max 39ms — shared-VM noise); hook rewrite ~11ms min / ~11.1ms median.
+- Hermeticity confirmed by construction — no `pnpm`/`npm`/`brew`/`pip`/`apt` install step exists in the workflow.
+- The four `_(CI macos-latest)_` cells in `docs/architecture.md:197-200` are now filled with these numbers (commit pending).
 
 ---
 
 ### Gaps Summary
 
-No blocking gaps. All 9 must-haves are VERIFIED against the actual codebase artifacts. The single item requiring human action is the macOS CI lane first run — a deliberate design decision (D-09, documented in both the plan must_haves and the CI workflow hermeticity comment) that is correctly classified as UNCERTAIN until CI executes.
+No gaps. All 9 must-haves are VERIFIED against the actual codebase artifacts, and the sole human-verification item (macOS CI first run, design decision D-09) was resolved 2026-05-22 from the first `macos-latest` GitHub Actions run. Phase 6 is fully verified.
 
 The pre-existing test-infra bug (`CARGO_BIN_EXE_test_emitter` unset on fresh checkout) that blocked the `cargo test --workspace` step has been resolved: `ci.yml` now runs `cargo build --workspace` before the test sweep (commit `a5a220c`), and `cargo test --workspace` locally produces 448 passed, 0 failed.
 
 ---
 
-_Verified: 2026-05-22T10:10:00Z_
+_Verified: 2026-05-22T10:10:00Z (initial); macOS CI human-verification item resolved 2026-05-22T17:42:00Z_
 _Verifier: Claude (gsd-verifier)_

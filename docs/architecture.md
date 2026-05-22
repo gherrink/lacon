@@ -194,14 +194,14 @@ Measured 2026-05-22 on Linux (worktree, ext4): steady-state criterion median 208
 
 | Command | Linux min | Linux median | macOS min | macOS median |
 |---------|-----------|--------------|-----------|--------------|
-| `lacon --version` | 1118 µs | 1474 µs | _(CI macos-latest)_ | _(CI macos-latest)_ |
-| `lacon validate <rule>` | 1195 µs | 1414 µs | _(CI macos-latest)_ | _(CI macos-latest)_ |
-| `lacon hook passthrough (no rule)` † | ~12 ms | ~13.6 ms | _(CI macos-latest)_ | _(CI macos-latest)_ |
-| `lacon hook rewrite (matched)` † | ~12 ms | ~13.7 ms | _(CI macos-latest)_ | _(CI macos-latest)_ |
+| `lacon --version` | 1118 µs | 1474 µs | 1953 µs | 2009 µs |
+| `lacon validate <rule>` | 1195 µs | 1414 µs | 2094 µs | 2172 µs |
+| `lacon hook passthrough (no rule)` † | ~12 ms | ~13.6 ms | ~11 ms | ~11.9 ms |
+| `lacon hook rewrite (matched)` † | ~12 ms | ~13.7 ms | ~11 ms | ~11.1 ms |
 
 > † Wall-clock figure is **spawn-dominated measurement overhead, not hook work**, so it is *not* measured against the 10 ms budget. The hook's own in-process syscall work is ~0.3 ms (`strace -c`); the 10 ms cold-start budget governs hook *execution*, which this far underruns. See the note below.
 
-Measured 2026-05-22 on Linux (worktree, 16-core, load ~2.4). The `lacon --version`/`validate` lazy-open paths sit at ~1.1–1.5 ms. The `lacon hook …` wall-clock figures (~12 ms min) are **spawn-dominated measurement overhead, not hook execution**: an `strace -c` of a single hook run shows the hook's own syscall work totals ~0.3 ms; the rest is `Command::spawn` + piped-stdio + scheduler latency under the probe's tight 50-iteration loop on a loaded box. This is exactly why the hook wall-clock is a soft-reported number and the deterministic gate is the in-process steady-state `tracker_open` bench above. Note the adapter hook (`lacon-claude-hook`) does **not** itself open the tracker — `Tracker::open` lives in `lacon run`, which the hook only rewrites the command to invoke.
+Measured 2026-05-22 on Linux (worktree, 16-core, load ~2.4). The `lacon --version`/`validate` lazy-open paths sit at ~1.1–1.5 ms. The `lacon hook …` wall-clock figures (~12 ms min) are **spawn-dominated measurement overhead, not hook execution**: an `strace -c` of a single hook run shows the hook's own syscall work totals ~0.3 ms; the rest is `Command::spawn` + piped-stdio + scheduler latency under the probe's tight 50-iteration loop on a loaded box. This is exactly why the hook wall-clock is a soft-reported number and the deterministic gate is the in-process steady-state `tracker_open` bench above. Note the adapter hook (`lacon-claude-hook`) does **not** itself open the tracker — `Tracker::open` lives in `lacon run`, which the hook only rewrites the command to invoke. The macOS column was filled on 2026-05-22 from the first `macos-latest` GitHub Actions run: lazy-open paths at ~2 ms (`--version` 2009 µs median, `validate` 2172 µs median) and hook wall-clock ~11 ms median (passthrough p95 16.5 ms, max 39 ms — exactly the shared-VM noise that keeps this a soft report, not a build-breaker). Both lanes reached this cold-start step, so the `tracker_open` hard gate (which runs before it in `ci.yml`) passed on `ubuntu-latest` and `macos-latest`, and no package-manager fetch step ran (none exist in the workflow).
 
 To regenerate the wall-clock table: `./scripts/bench-cold-start.sh`. To run the hard gate: `cargo bench -p lacon-core --bench tracker_open`.
 
