@@ -1,0 +1,13 @@
+On branch main
+
+No commits yet
+
+Untracked files:
+	.gitignore
+	Cargo.lock
+	README.md
+	src/gen/mod1.rs
+	src/gen/mod10.rs
+	… 118 more changed/untracked files
+
+nothing added to commit but untracked files present (use "git add" to track)

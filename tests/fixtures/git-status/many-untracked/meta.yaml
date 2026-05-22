@@ -1,0 +1,6 @@
+command: git status -uall
+exit_code: 0
+tool_version: "git 2.53.0"
+os: linux
+exempt_from_reduction_check: false
+notes: "chatty -uall in a fresh repo with 123 untracked files; collapse_repeated on ^\\t collapses the file block to 5 examples + a summary line"

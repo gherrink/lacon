@@ -1,0 +1,24 @@
+id: git-status
+description: git status
+match:
+  command: git
+  args_prefix: [status]
+pipeline:
+  - strip_ansi
+  # Drop the parenthetical git hint lines ("(use \"git add ...\" ...)") — pure noise.
+  - drop_regex: '^\s*\(use '
+  # Collapse the long tab-indented file block under "Untracked files:" /
+  # "Changes not staged for commit:" into a few examples plus a summary. In a
+  # monorepo with -uall this block can be hundreds of lines; section headers
+  # (^On branch, ^Changes, ^Untracked files:) are NOT tab-indented so they survive.
+  - collapse_repeated:
+      pattern: '^\t'
+      max_kept: 5
+      summary: "\t… {count} more changed/untracked files"
+  # NO max_bytes — the loader auto-injects the 32768 cap (D-07).
+on_error:
+  # git status only exits nonzero outside a repo ("fatal: not a git repository").
+  # Keep the fatal: line so the error survives; this block is small (exempt).
+  pipeline:
+    - strip_ansi
+    - keep_regex: '^fatal:'

@@ -1,0 +1,8 @@
+command: git status
+exit_code: 128
+tool_version: "git 2.53.0"
+os: linux
+exempt_from_reduction_check: true
+must_keep_lines:
+  - "fatal: not a git repository"
+notes: "git status run outside a repository exits 128; on_error keeps the fatal: line. Small output — exempt from the reduction check."
