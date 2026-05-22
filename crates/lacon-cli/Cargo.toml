@@ -25,6 +25,12 @@ assert_cmd = { workspace = true }
 predicates = { workspace = true }
 tempfile = { workspace = true }
 test_emitter = { path = "../../bin/test_emitter" }
+# Phase 6 Plan 01 (D-07): the hermetic pnpm E2E drives the `lacon-claude-hook`
+# binary via `assert_cmd::cargo::cargo_bin`. Declaring the adapter as a dev-dep
+# makes cargo set `CARGO_BIN_EXE_lacon-claude-hook`, so the hook resolves even
+# when the test target is built in isolation (no reliance on a prior build).
+# No dependency cycle: the adapter depends only on lacon-core, not lacon-cli.
+lacon-adapter-claudecode = { path = "../lacon-adapter-claudecode" }
 # Phase 2 Plan 06: tracking e2e tests open the DB via rusqlite to assert
 # row contents, view queryability, and PRAGMA state.
 rusqlite = { workspace = true }

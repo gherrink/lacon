@@ -1179,6 +1179,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "etcetera",
+ "lacon-adapter-claudecode",
  "lacon-core",
  "predicates",
  "regex",
