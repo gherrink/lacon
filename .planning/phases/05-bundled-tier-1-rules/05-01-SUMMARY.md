@@ -125,6 +125,12 @@ None - no external service configuration required.
 - The bundled→bundled `extends` resolution path (D-06 risk) is still untested at fixture level; the first plan that uses `extends` should treat it as a spike (per RESEARCH Pitfall 4 / D-06 fallback to copy-the-parent).
 - No blockers.
 
+## Self-Check: PASSED
+
+- Files verified on disk: `crates/lacon-core/tests/bundled_rules.rs`, `docs/testing-rules.md`, `docs/bundled-rules-roadmap.md`, `.planning/phases/05-bundled-tier-1-rules/05-01-SUMMARY.md`
+- Commits verified in git log: `0c38df0` (Task 1, test), `49b0bb3` (Task 2, docs), `78d6ac7` (SUMMARY)
+- STATE.md / ROADMAP.md untouched (orchestrator owns those writes)
+
 ---
 *Phase: 05-bundled-tier-1-rules*
 *Completed: 2026-05-22*
