@@ -67,19 +67,23 @@ fn run_with_rule<W: Write>(
     let project_path_for_tracker = project_path.clone();
     // ────────────────────────────────────────────────────────────────────────────
 
-    // ─── Phase 7 (D-02/D-03/D-06): gate raw capture on the resolved opt-in ───
-    // Resolve `store_raw_outputs` for this project BEFORE the run so the runner
-    // serializes raw bytes ONLY when the user opted in. `record_invocation`
-    // re-resolves the SAME value via `resolve_store_raw_outputs` for the
-    // double-gate, so the capture flag and the persist gate never diverge.
-    // Config awareness stays in run.rs — the core runner remains config-unaware
-    // (D-07).
-    let capture_raw = resolve_store_raw_outputs(project_path.as_deref());
+    // ─── Phase 7 (D-02/D-03/D-06) + WR-02/IN-02: resolve config ONCE ─────────
+    // Resolve the layered config a SINGLE time for this `lacon run`, BEFORE the
+    // run. The same `ResolvedConfig` then feeds BOTH the capture flag here AND
+    // the persist double-gate in `record_invocation` — so `config_paths`,
+    // `load_cfg`, and `user_config_dir` run ONCE per invocation instead of 3×
+    // (WR-02: restores the ADR-0013 cold-start budget on the hot path). Because
+    // a single resolved value drives both `capture_raw` and the gate, the two
+    // can never diverge — removing the "must stay in sync" hazard that the old
+    // re-resolution comments were working hard to defend (IN-02). Config
+    // awareness stays in run.rs; the core runner remains config-unaware (D-07).
+    let resolved_cfg = resolve_config(project_path.as_deref());
+    let capture_raw = resolved_cfg.cfg.store_raw_outputs;
 
     let options = RunOptions {
         project_path,
-        extra_env: Default::default(),
         capture_raw,
+        ..Default::default()
     };
     let mut runner = Runner::new(resolved, options);
     match runner.run(&argv, sink) {
@@ -94,6 +98,7 @@ fn run_with_rule<W: Write>(
                 argv,
                 project_path_for_tracker,
                 outcome,
+                resolved_cfg,
             );
             Ok(exit_code)
         }
@@ -140,7 +145,13 @@ fn run_unmatched<W: Write>(argv: Vec<String>, _sink: &mut W) -> anyhow::Result<i
                 raw_captured: None, // unmatched runs capture nothing (D-01)
             };
             let project_path = std::env::current_dir().ok();
-            record_invocation(None, None, argv, project_path, outcome);
+            // WR-02/IN-02: resolve config once here too, then thread it through
+            // so `record_invocation` never re-derives it. Unmatched runs never
+            // capture (D-01: `raw_captured` is `None`), but the tracker write
+            // still needs `cfg.retention`, the project/user layer split, and the
+            // user marker dir — all carried by `ResolvedConfig`.
+            let resolved_cfg = resolve_config(project_path.as_deref());
+            record_invocation(None, None, argv, project_path, outcome, resolved_cfg);
             Ok(exit_code)
         }
         Err(e) => {
@@ -174,29 +185,51 @@ fn config_paths(project_path: Option<&std::path::Path>) -> (Option<PathBuf>, Opt
     (project_config_path, user_config_path)
 }
 
-/// Load the layered config for `project_path`, applying the WR-05 cold-start
-/// fast-path: when neither a project nor a user `config.yaml` exists — the
-/// common case on the hook hot path — skip the YAML parse entirely and use
-/// `Config::default()`. Any load/validation error degrades to defaults
-/// (best-effort posture, D-12). The same resolution is used both to set the
-/// capture flag (`run_with_rule`) and to gate the persist (`record_invocation`)
-/// so the two never diverge.
-fn load_cfg(project_path: Option<&std::path::Path>) -> Config {
+/// The result of resolving config ONCE for a single `lacon run` (WR-02/IN-02).
+///
+/// Bundles every config-derived value the run + tracker write need so the
+/// expensive resolution (`config_paths`'s up-to-two `Path::exists()` syscalls,
+/// the layered-YAML parse, `user_config_dir`'s base-strategy probe) runs ONCE
+/// per invocation rather than 3×. Threaded from `run_with_rule` / `run_unmatched`
+/// into `record_invocation`.
+///
+/// The single `cfg.store_raw_outputs` value drives BOTH the `RunOptions.capture_raw`
+/// flag (capture side) AND the persist double-gate (`Tracker::record`), so the
+/// capture decision and the persist gate can never diverge (D-06/D-07).
+struct ResolvedConfig {
+    /// The layered config (carries `store_raw_outputs` + `retention`).
+    cfg: Config,
+    /// Project `config.yaml` path — `Some` only when it exists on disk. Used for
+    /// the project-vs-user privacy-layer split (`project_store_raw`).
+    project_config_path: Option<PathBuf>,
+    /// User config dir (`<config_dir>/lacon`) — reused for the privacy marker
+    /// path resolution (D-14).
+    user_config_dir: Option<PathBuf>,
+}
+
+/// Resolve config ONCE for `project_path` (WR-02/IN-02). Computes `config_paths`,
+/// `user_config_dir`, and the layered config a single time and bundles them into
+/// [`ResolvedConfig`].
+///
+/// WR-05 cold-start fast-path: when neither a project nor a user `config.yaml`
+/// exists — the common case on the hook hot path — skip the YAML parse entirely
+/// and use `Config::default()`. Any load/validation error degrades to defaults
+/// (best-effort posture, D-12). With this resolve-once design the path probes
+/// happen exactly once per invocation instead of per call site.
+fn resolve_config(project_path: Option<&std::path::Path>) -> ResolvedConfig {
+    let user_config_dir = user_config_dir();
     let (project_config_path, user_config_path) = config_paths(project_path);
-    if project_config_path.is_none() && user_config_path.is_none() {
+    let cfg = if project_config_path.is_none() && user_config_path.is_none() {
         Config::default()
     } else {
         config::load_layered(project_config_path.as_deref(), user_config_path.as_deref())
             .unwrap_or_else(|_| Config::default())
+    };
+    ResolvedConfig {
+        cfg,
+        project_config_path,
+        user_config_dir,
     }
-}
-
-/// Resolve the project's effective `store_raw_outputs` opt-in decision (D-06).
-/// `run_with_rule` calls this BEFORE the run to set `RunOptions.capture_raw`;
-/// `record_invocation` re-derives the SAME value (via `load_cfg`) for the
-/// double-gate, so capture and persist always agree.
-fn resolve_store_raw_outputs(project_path: Option<&std::path::Path>) -> bool {
-    load_cfg(project_path).store_raw_outputs
 }
 
 /// Best-effort tracker write (D-12). Errors are logged with the literal
@@ -205,15 +238,20 @@ fn resolve_store_raw_outputs(project_path: Option<&std::path::Path>) -> bool {
 /// Per CONTEXT D-02: filtered bytes are already on stdout by the time this
 /// function is called.
 /// Per CONTEXT D-17: env-var contract for assistant + session_id.
-/// Per revision iteration 1, Issue #9: loads `EngineConfig::load_layered` so
-/// SC2 (privacy warning trigger via flipping project config) is reachable
-/// end-to-end via the CLI.
+/// Per revision iteration 1, Issue #9: SC2 (privacy warning trigger via flipping
+/// project config) is reachable end-to-end via the CLI.
+///
+/// WR-02/IN-02: the layered config is no longer re-resolved here — the caller
+/// resolves it ONCE (`resolve_config`) and threads in the [`ResolvedConfig`], so
+/// the per-invocation config cost is paid a single time and the capture flag and
+/// persist gate read the identical value.
 fn record_invocation(
     rule_id: Option<String>,
     rule_source: Option<RuleSource>,
     argv: Vec<String>,
     project_path: Option<PathBuf>,
     mut outcome: RunOutcome,
+    resolved_cfg: ResolvedConfig,
 ) {
     // Assemble InvocationMeta. Failures here can only come from system-time
     // anomalies; map to TrackingError::Clock and short-circuit silently.
@@ -236,16 +274,19 @@ fn record_invocation(
     // `None` for default-off, bypass, and unmatched runs (set in Task 1).
     let raw_captured = outcome.raw_captured.take();
 
-    // ─── Issue #9 fix: load layered config so SC2 is reachable via CLI ───
-    // The same resolution feeds `run_with_rule`'s capture flag — both go through
-    // `load_cfg` / `config_paths` so the capture decision and the persist gate
-    // read identical values (D-06/D-07). `user_config_dir` is reused below for
-    // the privacy marker path resolution (D-14); `project_config_path` is reused
-    // for the project-vs-user layer split. WR-05 cold-start fast-path lives in
-    // `load_cfg`.
-    let user_config_dir: Option<PathBuf> = user_config_dir();
-    let (project_config_path, _user_config_path) = config_paths(project_path.as_deref());
-    let cfg: Config = load_cfg(project_path.as_deref());
+    // ─── WR-02/IN-02: use the config the caller already resolved ONCE ───
+    // The SAME `ResolvedConfig` set `run_with_rule`'s capture flag, so the
+    // capture decision and the persist gate read identical values (D-06/D-07) by
+    // construction — no re-resolution, no "must stay in sync" hazard. The
+    // discarded `_user_config_path` probe (IN-02) is gone: `resolve_config`
+    // computed everything we need exactly once. `user_config_dir` is reused below
+    // for the privacy marker path (D-14); `project_config_path` for the
+    // project-vs-user layer split.
+    let ResolvedConfig {
+        cfg,
+        project_config_path,
+        user_config_dir,
+    } = resolved_cfg;
     // ──────────────────────────────────────────────────────────────────────
 
     let meta = InvocationMeta {
