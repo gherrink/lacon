@@ -38,11 +38,14 @@ Scenarios are short slugs describing the captured situation: `clean-install`, `w
 
 ```yaml
 command: pnpm install
+exit_code: 0
 tool_version: "pnpm 9.4.0"
 captured_at: 2026-04-12
 os: linux
 notes: clean install on a fresh node_modules; lockfile up to date
 ```
+
+`exit_code` selects which filter branch the runner replays, per [ADR-0010](decisions/0010-on-error-replaces-pipeline.md): `0` runs the rule's success `pipeline`; a nonzero code runs the `on_error` pipeline when the rule defines one, and falls through to raw passthrough when it does not. It is load-bearing — without it a failure fixture would silently run the success pipeline and never exercise `on_error`. Record the **actual observed** exit code, not an assumed one: e.g. `cargo build`/`cargo test` failures exit `101` (not `1`).
 
 `os` is informational, not a test selector — fixtures are platform-agnostic in the sense that the test runs on every supported OS. If a rule needs to behave differently on macOS vs Linux, capture a fixture per OS and let the test runner assert against both.
 
