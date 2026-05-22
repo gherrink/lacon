@@ -1,0 +1,32 @@
+id: pytest
+description: >-
+  pytest / python -m pytest — drop the verbose per-test "PASSED [ NN%]" lines and
+  the session-start header block (platform/cachedir/rootdir/plugins/collecting/
+  collected + the "=== test session starts ===" banner) on success, keeping the
+  final "=== N passed ===" summary banner. On failure (exit 1) route through
+  on_error, preserving the FAILURES block, the "E " assertion/traceback lines, the
+  ">" source-context lines, the "file:LINE: ExceptionType" markers, the FAILED
+  short-summary lines, and the final "=== N failed ===" banner. Extends
+  bundled/test-base (D-06): the parent contributes strip_ansi to the head of this
+  success pipeline.
+extends: bundled/test-base
+match:
+  any:
+    - command: pytest
+    - command: python
+      args_prefix: [-m, pytest]
+pipeline:
+  # strip_ansi is prepended by the parent (bundled/test-base) per ADR-0012.
+  - drop_regex: 'PASSED\s+\['
+  - drop_regex: '^platform '
+  - drop_regex: '^cachedir:'
+  - drop_regex: '^rootdir:'
+  - drop_regex: '^plugins:'
+  - drop_regex: '^collecting'
+  - drop_regex: '^collected'
+  - drop_regex: '^=+ test session starts =+$'
+on_error:
+  pipeline:
+    - strip_ansi
+    - keep_regex: '(=+ FAILURES =+|^E |^>|:\d+: \w*Error$|^FAILED |=+ \d+ failed.* =+)'
+    - keep_tail: { lines: 60 }

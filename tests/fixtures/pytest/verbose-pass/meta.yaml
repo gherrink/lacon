@@ -1,0 +1,16 @@
+command: pytest -v
+exit_code: 0
+tool_version: "pytest 9.0.2"
+os: linux
+exempt_from_reduction_check: false
+must_keep_lines:
+  - "10 passed"
+notes: >-
+  Real `pytest -v` run of a throwaway 10-passing-test demo module (captured live,
+  pytest 9.0.2). Verbose so the per-test "PASSED [ NN%]" lines exist to drop
+  (Pitfall 5 — default dot-progress is too small to clear the floor). The 10
+  PASSED lines + the session header block (platform/cachedir/rootdir/plugins/
+  collecting/collected + "=== test session starts ===" banner) drop; the final
+  "=== 10 passed ===" summary banner survives. Reduction ratio ~0.072 (well under
+  0.5). rootdir anonymized to /tmp/lacon-pytest-XXXX; duration normalized to
+  0.01s for determinism. exit 0 -> success pipeline.

@@ -1,0 +1,21 @@
+command: pytest
+exit_code: 1
+tool_version: "pytest 9.0.2"
+os: linux
+exempt_from_reduction_check: true
+must_keep_lines:
+  - "assert 6 == 7"
+  - "KeyError: 'missing'"
+  - "test_fail.py:10: AssertionError"
+  - "FAILED test_fail.py::test_bad"
+  - "2 failed, 1 passed"
+notes: >-
+  Real default `pytest` run of a throwaway module with 2 failing tests (an
+  AssertionError + a KeyError) and 1 passing (captured live, pytest 9.0.2).
+  pytest test failures exit 1 (not 101 like cargo) -> routes through on_error.
+  Failure context is intentionally preserved (FAILURES banner, the E assertion/
+  traceback lines, the > source-context lines, the file:LINE: ExceptionType
+  markers, the FAILED short-summary lines, and the final "=== 2 failed ==="
+  banner), so this fixture is exempt from the >=50% reduction floor and instead
+  asserts error survival via must_keep_lines (T-5-03 / V5). rootdir anonymized;
+  duration normalized to 0.01s for determinism.
