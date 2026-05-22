@@ -1,0 +1,11 @@
+=================================== FAILURES ===================================
+>       assert compute(3) == 7
+E       assert 6 == 7
+E        +  where 6 = compute(3)
+test_fail.py:10: AssertionError
+>       return d["missing"]
+E       KeyError: 'missing'
+test_fail.py:15: KeyError
+FAILED test_fail.py::test_bad - assert 6 == 7
+FAILED test_fail.py::test_err - KeyError: 'missing'
+========================= 2 failed, 1 passed in 0.01s ==========================

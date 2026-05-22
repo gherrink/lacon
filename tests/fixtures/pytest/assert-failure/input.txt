@@ -1,0 +1,30 @@
+============================= test session starts ==============================
+platform linux -- Python 3.14.4, pytest-9.0.2, pluggy-1.6.0
+rootdir: /tmp/lacon-pytest-XXXX
+plugins: typeguard-4.4.4
+collected 3 items
+
+test_fail.py .FF                                                         [100%]
+
+=================================== FAILURES ===================================
+___________________________________ test_bad ___________________________________
+
+    def test_bad():
+>       assert compute(3) == 7
+E       assert 6 == 7
+E        +  where 6 = compute(3)
+
+test_fail.py:10: AssertionError
+___________________________________ test_err ___________________________________
+
+    def test_err():
+        d = {}
+>       return d["missing"]
+               ^^^^^^^^^^^^
+E       KeyError: 'missing'
+
+test_fail.py:15: KeyError
+=========================== short test summary info ============================
+FAILED test_fail.py::test_bad - assert 6 == 7
+FAILED test_fail.py::test_err - KeyError: 'missing'
+========================= 2 failed, 1 passed in 0.01s ==========================
