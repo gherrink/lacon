@@ -31,10 +31,8 @@ pub enum CliCommand {
         path: PathBuf,
     },
     /// Set up `.lacon/`, install Claude Code hook, add CLAUDE.md note.
-    /// (Phase 3 implementation — Phase 1 stub.)
     Init,
     /// Show top offenders, bypass rates, unmatched commands.
-    /// (Phase 4 implementation — Phase 1 stub.)
     Stats {
         /// Filter to one project. Normalized to an absolute path (`.`, relative
         /// paths, and trailing slashes are accepted) and matched verbatim
@@ -47,11 +45,9 @@ pub enum CliCommand {
         rule: Option<String>,
     },
     /// Re-run filtering against stored raw output for a tracked invocation.
-    /// (Phase 4 implementation — Phase 1 stub.)
     Explain {
         id: String,
     },
     /// Verify hooks installed, configs valid, rules parse.
-    /// (Phase 4 implementation — Phase 1 stub.)
     Doctor,
 }
