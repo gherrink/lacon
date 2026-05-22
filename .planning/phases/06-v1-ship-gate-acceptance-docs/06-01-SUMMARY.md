@@ -121,3 +121,8 @@ None. This plan adds tests + a planning doc only, runs hermetically, and the sin
 
 ## Scope Boundary
 This plan closes SC4 (test-coverage audit + green confirmation), SC3 (explain byte-equality), SC2 second-half (hot reload), and SC2 first-half (pnpm end-to-end). SC1 (cold-start budget / `tracker_open` steady-state split) and the CI-hermetic sub-claim (`.github/workflows/ci.yml`) are owned by **Plan 02** and were intentionally not touched here.
+
+## Self-Check: PASSED
+- Files (all FOUND): 06-ACCEPTANCE-MAP.md, 06-01-SUMMARY.md, cli_explain.rs, hot_reload.rs, pnpm_e2e.rs, Cargo.toml
+- Commits (all FOUND): 9c92619 (map), 0ef9d51 (explain+hot-reload), 245f602 (pnpm E2E), a7f9700 (summary)
+- Working tree clean; full workspace suite green (no `--ignored`); 0 compiler warnings.
