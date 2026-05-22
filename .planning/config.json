@@ -16,9 +16,10 @@
     "skip_discuss": false,
     "use_worktrees": true,
     "research_before_questions": false,
-    "discuss_mode": "assumptions"
+    "discuss_mode": "assumptions",
+    "_auto_chain_active": false
   },
-  "model_profile": "balanced",
+  "model_profile": "quality",
   "commit_docs": true,
   "intel": {
     "enabled": false
