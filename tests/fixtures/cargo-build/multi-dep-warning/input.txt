@@ -1,0 +1,21 @@
+    Updating crates.io index
+     Locking 9 packages to latest compatible versions
+   Compiling serde_core v1.0.228
+   Compiling anyhow v1.0.102
+   Compiling serde v1.0.228
+   Compiling memchr v2.8.0
+   Compiling ryu v1.0.23
+   Compiling once_cell v1.21.4
+   Compiling cfg-if v1.0.4
+   Compiling itoa v1.0.18
+   Compiling demo v0.1.0 (/tmp/demo)
+warning: unused variable: `unused`
+ --> src/main.rs:2:9
+  |
+2 |     let unused = 42;
+  |         ^^^^^^ help: if this is intentional, prefix it with an underscore: `_unused`
+  |
+  = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `demo` (bin "demo") generated 1 warning (run `cargo fix --bin "demo" -p demo` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.77s

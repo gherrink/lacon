@@ -1,0 +1,9 @@
+warning: unused variable: `unused`
+ --> src/main.rs:2:9
+  |
+2 |     let unused = 42;
+  |         ^^^^^^ help: if this is intentional, prefix it with an underscore: `_unused`
+  |
+  = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `demo` (bin "demo") generated 1 warning (run `cargo fix --bin "demo" -p demo` to apply 1 suggestion)

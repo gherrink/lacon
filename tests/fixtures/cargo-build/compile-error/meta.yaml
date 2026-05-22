@@ -1,0 +1,10 @@
+command: cargo build
+exit_code: 101
+tool_version: "cargo 1.95.0"
+captured_at: 2026-05-22
+os: linux
+exempt_from_reduction_check: true
+must_keep_lines:
+  - "error[E0308]"
+  - "mismatched types"
+notes: "type-mismatch compile error; cargo build failure exits 101 (RESEARCH A6). Routes through on_error; error[E0308]/error: + the --> file:line context survive. Tmp path anonymized to /tmp/demo."
