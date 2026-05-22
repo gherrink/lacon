@@ -1,0 +1,10 @@
+command: docker build
+exit_code: 1
+tool_version: "Docker 29.5.1 BuildKit"
+captured_at: 2026-05-22
+os: linux
+exempt_from_reduction_check: true
+must_keep_lines:
+  - "ERROR: failed to build"
+  - "exit code: 17"
+notes: "DOCKER_BUILDKIT=1; RUN exit 17 fails on step [3/4], docker build exits 1. Routes through on_error; keep_around_match on ERROR preserves the framed error block + Dockerfile excerpt."

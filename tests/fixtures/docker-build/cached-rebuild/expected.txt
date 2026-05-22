@@ -1,0 +1,25 @@
+
+#1 [internal] load build definition from Dockerfile
+
+#2 [internal] load metadata for docker.io/library/alpine:3.20
+
+#3 [internal] load .dockerignore
+
+#4 [1/7] FROM docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+
+#5 [internal] load build context
+
+#6 [3/7] RUN echo "step two done"
+
+#7 [2/7] RUN echo "step one" && echo "more output line 1" && echo "more output line 2"
+
+#8 [5/7] COPY Dockerfile /tmp/Dockerfile
+
+#9 [4/7] RUN apk add --no-cache jq >/dev/null 2>&1 || true; echo "step three done"
+
+#10 [6/7] RUN echo "step five done"
+
+#11 [7/7] RUN echo "final step"
+
+#12 naming to docker.io/library/lacon-docker-fixture:latest done
+#12 unpacking to docker.io/library/lacon-docker-fixture:latest done

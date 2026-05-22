@@ -1,0 +1,48 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 313B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/alpine:3.20
+#2 DONE 0.2s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 2B done
+#3 DONE 0.0s
+
+#4 [1/7] FROM docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+#4 resolve docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 32B done
+#5 DONE 0.0s
+
+#6 [3/7] RUN echo "step two done"
+#6 CACHED
+
+#7 [2/7] RUN echo "step one" && echo "more output line 1" && echo "more output line 2"
+#7 CACHED
+
+#8 [5/7] COPY Dockerfile /tmp/Dockerfile
+#8 CACHED
+
+#9 [4/7] RUN apk add --no-cache jq >/dev/null 2>&1 || true; echo "step three done"
+#9 CACHED
+
+#10 [6/7] RUN echo "step five done"
+#10 CACHED
+
+#11 [7/7] RUN echo "final step"
+#11 CACHED
+
+#12 exporting to image
+#12 exporting layers done
+#12 exporting manifest sha256:02e370a6cb2734a25d771968e63ce6a8a0b6dd899033e9900771636ed15c26bf done
+#12 exporting config sha256:fbc6a91e108862c369792071ef5097322c6124b5206639ca67d113357f5f1f51 done
+#12 exporting attestation manifest sha256:7e6e93ba7df7916633508328f10f09c9b4f5270fdfba91a69324bc8c056cb769 done
+#12 exporting manifest list sha256:9046bfcccb1002848aa986be3a7de80c6c3cc0abe9a143c9de11f329461855a1 done
+#12 naming to docker.io/library/lacon-docker-fixture:latest done
+#12 unpacking to docker.io/library/lacon-docker-fixture:latest done
+#12 DONE 0.0s

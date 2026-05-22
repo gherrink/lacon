@@ -1,0 +1,34 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile.fail
+#1 transferring dockerfile: 118B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/alpine:3.20
+#2 DONE 0.2s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 2B done
+#3 DONE 0.0s
+
+#4 [1/4] FROM docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+#4 resolve docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc done
+#4 DONE 0.0s
+
+#5 [2/4] RUN echo "this works"
+#5 CACHED
+
+#6 [3/4] RUN exit 17
+#6 ERROR: process "/bin/sh -c exit 17" did not complete successfully: exit code: 17
+------
+ > [3/4] RUN exit 17:
+------
+Dockerfile.fail:3
+--------------------
+   1 |     FROM alpine:3.20
+   2 |     RUN echo "this works"
+   3 | >>> RUN exit 17
+   4 |     RUN echo "never reached"
+   5 |
+--------------------
+ERROR: failed to build: failed to solve: process "/bin/sh -c exit 17" did not complete successfully: exit code: 17
