@@ -711,18 +711,18 @@ on_error:
 
 **These six are the only `[ASSUMED]`/`[CITED]` items.** Everything tagged 🟢 (cargo, git, pytest, docker, npm/pnpm/yarn) is real captured output and is `[VERIFIED]`.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Shared test-base via `extends` vs copy-the-parent (D-06)**
+1. **Shared test-base via `extends` vs copy-the-parent (D-06)** — RESOLVED — plan 05-02 spikes the bundled→bundled `extends` path first; if the shared base is just `strip_ansi` the fallback is copy-the-parent per D-06 (either satisfies the requirements).
    - What we know: bundled→bundled extends is implemented (`loader.rs:573-620`) but untested at fixture level; prepends parent pipeline.
    - What's unclear: how much is genuinely shareable — analysis shows only `strip_ansi` + a `keep_tail` cap are common; the per-test-pass drop regex differs per tool.
    - Recommendation: spike ONE extends-based rule first (Pitfall 4). If the shared base is just `strip_ansi`, the value of `extends` is marginal — copy-the-parent (D-06 fallback) is likely cleaner and lower-risk. Planner's call; either satisfies the requirements.
 
-2. **Primary-success scenario selection per rule (50% floor)**
+2. **Primary-success scenario selection per rule (50% floor)** — RESOLVED — each rule plan prescribes the chatty representative capture as primary (verbose `-v` pytest, multi-dep cargo, deprecated-deps npm install, untracked-heavy git status, cached-rebuild docker); genuinely-small fixtures are marked `exempt_from_reduction_check: true`.
    - What we know: several tools' default success output is already compact (Pitfall 5).
    - Recommendation: for each rule, pick the *representative chatty* success case as "primary" (multi-dep cargo, `-v` pytest, deprecated-deps npm, chatty pnpm, `-uall` git, multi-step+cache docker). Mark genuinely-small fixtures `exempt_from_reduction_check: true`.
 
-3. **tsc/eslint near-empty success path**
+3. **tsc/eslint near-empty success path** — RESOLVED — plan 05-07 makes the FAILURE fixture primary for both tsc and eslint, and the clean-success fixture is reduction-exempt; because the output IS the signal for these two, the failure fixtures are ALSO `exempt_from_reduction_check: true` and assert error survival via `must_keep_lines` rather than the ≥50% floor.
    - What we know: both emit nothing on a clean run (exit 0).
    - Recommendation: make the *failure* path the primary fixture for these two; success fixture can be tiny + `exempt_from_reduction_check: true`, OR a "warnings present, exit 0" eslint scenario.
 

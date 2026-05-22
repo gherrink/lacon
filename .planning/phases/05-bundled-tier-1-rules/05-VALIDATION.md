@@ -43,7 +43,7 @@ created: 2026-05-22
 | W0: test runner + meta schema | — | 0 | REQ-bundled-rules-format | T-5-V5 / — | Rule YAML validated at load; regex linear-time (no ReDoS) | integration | `cargo test --test bundled_rules` | ❌ W0 (new file) | ⬜ pending |
 | Per-rule YAML + fixtures (×10) | — | 1+ | REQ-bundled-rules-tier1 | — | ≥50% reduction on primary success, zero error-line drops | integration (fixture-walk) | `cargo test --test bundled_rules` | ❌ W0 | ⬜ pending |
 | meta.yaml `exit_code` field (D-02) | — | 0 | REQ-bundled-rules-format | — | Failure fixtures route through `on_error` (ADR-0010) not success pipeline | integration | `cargo test --test bundled_rules` | ❌ W0 | ⬜ pending |
-| docs/specs/testing-rules.md schema update (D-02) | — | 0 | REQ-bundled-rules-format | — | meta.yaml schema documents `exit_code` | manual doc check | `grep exit_code docs/specs/testing-rules.md` | ❌ W0 | ⬜ pending |
+| docs/testing-rules.md schema update (D-02) | — | 0 | REQ-bundled-rules-format | — | meta.yaml schema documents `exit_code` | manual doc check | `grep exit_code docs/testing-rules.md` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -54,7 +54,7 @@ created: 2026-05-22
 - [ ] `crates/lacon-core/tests/bundled_rules.rs` — the fixture-walking runner (D-01/D-04/D-05/D-09); does not exist yet
 - [ ] `tests/fixtures/<rule-id>/<scenario>/` trees — 10 rules × ≥2 scenarios (`input.txt`, `expected.txt`, `meta.yaml`); none exist yet (`tests/fixtures/` has only `primitives/`)
 - [ ] `bundled-rules/*.yaml` — 10 rule files (+ optional `test-base.yaml`); dir has only `.gitkeep`
-- [ ] `docs/specs/testing-rules.md` — add `exit_code` to meta.yaml schema (D-02)
+- [ ] `docs/testing-rules.md` — add `exit_code` to meta.yaml schema (D-02)
 - [ ] Framework install: none — cargo harness already present
 
 *The integration test is itself a Wave 0 deliverable. It walks an empty/partial fixture tree and goes green incrementally as each rule's fixtures are authored — so the runner + meta-schema (incl. `exit_code`) MUST land before any rule fixtures can be asserted.*
