@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 Phase: 6
 Plan: Not started
 Status: Milestone complete
-Last activity: 2026-05-22 - Completed quick task 260522-tor: Scope-aware `lacon init` (--project/--user) with LACON.md + verified @import reference
+Last activity: 2026-05-22 - Completed quick task 260522-v4a: Scope-aware `lacon doctor` (checks project + user setup with opt-in posture)
 
 Progress: [██████████] 100%
 
@@ -162,6 +162,7 @@ None blocking. Three deferred-to-prototyping open questions assigned to phases a
 |---|-------------|------|--------|-----------|
 | 260522-s33 | Scrub stale phase-stub annotations from CLI help strings | 2026-05-22 | 3d8d849 | [260522-s33-scrub-cli-help-phase-stubs](./quick/260522-s33-scrub-cli-help-phase-stubs/) |
 | 260522-tor | Scope-aware `lacon init` (--project/--user) with LACON.md + verified @import reference | 2026-05-22 | 4697099 | [260522-tor-init-choose-project-vs-user-local-scope-](./quick/260522-tor-init-choose-project-vs-user-local-scope-/) |
+| 260522-v4a | Scope-aware `lacon doctor` — checks project + user setup (hook + LACON.md + @import) with opt-in posture | 2026-05-22 | 1baa30c | [260522-v4a-doctor-check-both-project-and-user-setup](./quick/260522-v4a-doctor-check-both-project-and-user-setup/) |
 
 ### Note on requirement count
 
