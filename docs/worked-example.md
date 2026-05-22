@@ -53,7 +53,11 @@ This rule does three things, all driven by the `extends` contract:
 - **It inherits `match`, `rewrite`, and `on_error` from `bundled/pkg-install`.** Because
   this rule doesn't define those fields, they come from the parent — so it matches the
   same `pnpm install` / `npm install` / `yarn install` invocations and reuses the parent's
-  error-path filtering. You only had to write the part that's different.
+  error-path filtering. You only had to write the part that's different. Note this means
+  your two extra `drop_regex` stages run on the **success path only**: the inherited
+  `on_error` pipeline is unchanged, so on a *failed* install those two lines are still
+  governed by the parent's error-path filtering, not your additions. To suppress them on
+  errors too, redefine `on_error` in this rule (it replaces, not extends, the parent's).
 - **It runs the bundled pipeline first, then the two extra `drop_regex` stages.** The
   parent's `pipeline` stages are *prepended* to yours. So output flows through all of
   `pkg-install`'s stages (strip ANSI, drop deprecation warnings, drop progress, …) and

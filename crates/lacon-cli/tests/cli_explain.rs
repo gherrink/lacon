@@ -274,19 +274,25 @@ fn explain_filtered_column_byte_equals_run_output() {
         .filter(|right| right != "filtered" && !right.chars().all(|c| c == '-'))
         .collect();
 
-    // Every expected filtered line must appear, in order, byte-for-byte. The raw
-    // bytes end in '\n' so the filter yields a trailing empty line; tolerate that
-    // single trailing blank on the rendered side (the kept lines themselves must
-    // match exactly).
-    let rendered_nonblank: Vec<&String> =
-        filtered_column.iter().filter(|s| !s.is_empty()).collect();
-    let expected_nonblank: Vec<&String> =
-        expected_filtered.iter().filter(|s| !s.is_empty()).collect();
+    // Compare the full filtered column in order, tolerating EXACTLY ONE trailing
+    // blank — the single trailing newline the runtime emits on non-empty output
+    // (runtime/mod.rs) yields one trailing empty element on both sides. Trimming
+    // only that one known trailing blank (not every blank, as a blanket
+    // `filter(!is_empty)` would) keeps the assertion sensitive to interior-blank
+    // drift or spurious extra trailing blanks (WR-06).
+    fn trim_one_trailing_blank(v: &[String]) -> &[String] {
+        match v.last() {
+            Some(last) if last.is_empty() => &v[..v.len() - 1],
+            _ => v,
+        }
+    }
+    let rendered = trim_one_trailing_blank(&filtered_column);
+    let expected = trim_one_trailing_blank(&expected_filtered);
 
     assert_eq!(
-        rendered_nonblank, expected_nonblank,
+        rendered, expected,
         "SC3: explain filtered column must byte-equal the re-derived filter output\n\
-         rendered: {rendered_nonblank:?}\nexpected: {expected_nonblank:?}\n\
+         rendered: {rendered:?}\nexpected: {expected:?}\n\
          full stdout:\n{stdout}"
     );
 

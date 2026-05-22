@@ -117,6 +117,16 @@ fn pnpm_e2e_hermetic() {
         rewritten.contains(&format!("lacon run --rule pnpm-stub -- {emitter_str} --stdout-lines 3")),
         "hook must wrap the matched command as `lacon run --rule pnpm-stub -- ...`; got: {rewritten}"
     );
+    // The wrap also carries the tracker-contract env-var prefix the adapter emits
+    // (LACON_ASSISTANT for Phase 2 tracking, LACON_SESSION_ID / LACON_TOOL_USE_ID
+    // for cross-correlation). Assert it explicitly so a regression that dropped the
+    // prefix can't leave this acceptance test green (WR-04).
+    assert!(
+        rewritten.contains("LACON_ASSISTANT=claude-code")
+            && rewritten.contains("LACON_SESSION_ID=")
+            && rewritten.contains("LACON_TOOL_USE_ID="),
+        "hook wrap must carry the LACON_* tracker-contract env prefix; got: {rewritten}"
+    );
 
     // ── Step 2: execute the rewritten `lacon run` and assert filtered output ─
     // We run the SAME `lacon run --rule pnpm-stub -- <emitter> ...` that the hook

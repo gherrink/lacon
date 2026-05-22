@@ -64,6 +64,12 @@ fn rule_edit_takes_effect_on_next_invocation() {
     let emitter_str = emitter.to_str().unwrap();
 
     // ── Rule v1: strip_ansi only → all emitter lines pass through ───────────
+    // NOTE (WR-05): this test invokes `lacon run --rule hot-rule`, which resolves
+    // the rule by id and never runs the matcher (run.rs bypasses
+    // match_argv_via_load_all under `--rule`). The `match:` block below is therefore
+    // INERT here — it is kept only so the fixtures mirror a real rule's shape. What
+    // this test proves is hot reload (mtime-keyed re-read across invocations), not
+    // matching.
     write_rule(
         proj.path(),
         &format!("id: hot-rule\nmatch: {{ command: {emitter_name} }}\npipeline:\n  - strip_ansi\n"),
