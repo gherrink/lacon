@@ -30,8 +30,21 @@ pub enum CliCommand {
         /// Path to .yaml file (rule or config; dispatched by content).
         path: PathBuf,
     },
-    /// Set up `.lacon/`, install Claude Code hook, add CLAUDE.md note.
-    Init,
+    /// Set up lacon at a chosen scope: rules skeleton, Claude Code hook, and a
+    /// `LACON.md` + `@import` reference in CLAUDE.md.
+    ///
+    /// `--project` installs into the current directory; `--user` installs
+    /// globally under `~/.claude` + `~/.config/lacon/rules`. Both may be passed
+    /// to install both scopes. With neither flag, an interactive prompt picks the
+    /// scope on a TTY; non-interactively, project scope is the default.
+    Init {
+        /// Install into the user (home-relative, global) scope.
+        #[arg(long)]
+        user: bool,
+        /// Install into the project (cwd-relative) scope.
+        #[arg(long)]
+        project: bool,
+    },
     /// Show top offenders, bypass rates, unmatched commands.
     Stats {
         /// Filter to one project. Normalized to an absolute path (`.`, relative

@@ -11,7 +11,7 @@ fn main() -> anyhow::Result<()> {
     let exit_code = match cli.command {
         CliCommand::Run { rule, argv } => commands::run::execute(rule, argv)?,
         CliCommand::Validate { path } => commands::validate::execute(&path)?,
-        CliCommand::Init => commands::init::execute()?,
+        CliCommand::Init { user, project } => commands::init::execute(user, project)?,
         CliCommand::Stats { project, since, rule } => {
             commands::stats::execute(project, since, rule)?
         }

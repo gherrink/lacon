@@ -1,109 +1,346 @@
-//! `lacon init` subcommand: opt a project into lacon (REQ-cli-init).
+//! `lacon init` subcommand: opt into lacon at a chosen scope (REQ-cli-init).
 //!
-//! Creates three things in the current working directory, idempotently:
+//! lacon can be installed at two **scopes**, selected via `--project` / `--user`
+//! (both may be passed → install both). Each scope performs the same three
+//! idempotent install steps against scope-specific paths:
 //!
-//! 1. **`.lacon/` skeleton** — an empty project rules directory with a
-//!    `.gitkeep` so it survives `git clone`. Rule files are created lazily by
-//!    the user; we do NOT pre-create `.lacon/rules/` (Phase 1's loader handles
-//!    a missing dir identically to an empty one).
-//! 2. **`.claude/settings.json` PreToolUse(Bash) hook** — installs (or
-//!    refreshes) the lacon-managed `lacon-claude-hook` entry inside
-//!    `hooks.PreToolUse[]` using the array-of-matchers shape (D-11). The file is
-//!    parsed as a `serde_json::Value`, so unrelated user config (top-level keys
-//!    like `model`/`theme`, non-Bash matcher groups, and user-authored Bash
-//!    hooks) is preserved untouched (D-28, T-settings-clobber). The walk uses
-//!    the command-string itself (`starts_with("lacon-claude-hook")`) as the
-//!    lacon-managed fingerprint (D-12) — scrub-then-reinsert guarantees a
-//!    byte-stable result across runs (idempotency, D-28). The write is atomic
-//!    via `tempfile::NamedTempFile::persist` (POSIX rename(2)) so a concurrent
-//!    `claude` startup never observes a half-written file (D-13).
-//! 3. **`CLAUDE.md` note** — appends or refreshes a
-//!    `<!-- lacon:start -->…<!-- lacon:end -->` HTML-comment block (D-14)
-//!    mentioning the `!!` bypass prefix and `LACON_DISABLE=1`. HTML comments
-//!    survive every markdown renderer, so detection is a plain string scan.
+//! 1. **Rules skeleton** — an empty rules directory with a `.gitkeep` so the
+//!    directory survives `git clone` (project: `.lacon/`; user:
+//!    `~/.config/lacon/rules/`, the XDG path the loader already reads).
+//! 2. **`settings.json` PreToolUse(Bash) hook** — installs (or refreshes) the
+//!    lacon-managed `lacon-claude-hook` entry inside `hooks.PreToolUse[]`. The
+//!    file is parsed as a `serde_json::Value`, so unrelated user config
+//!    (top-level keys, non-Bash matcher groups, user-authored Bash hooks) is
+//!    preserved untouched (T-tor-01). Scrub-then-reinsert guarantees a
+//!    byte-stable result across runs (idempotency). The write is atomic via
+//!    `tempfile::NamedTempFile::persist` (POSIX rename(2)) and preserves the
+//!    destination's Unix permissions — important for a real `~/.claude/settings.json`.
+//!    Paths: project = `./.claude/settings.json`; user = `~/.claude/settings.json`.
+//! 3. **`LACON.md` + `@import` reference** — the instructions live in a
+//!    standalone `LACON.md` file (mentioning the `!!` bypass prefix and
+//!    `LACON_DISABLE=1`). `CLAUDE.md` only carries a single, idempotent Claude
+//!    Code `@import` reference line pointing at that `LACON.md` (T-tor-02).
+//!    Block-level HTML comments in CLAUDE.md are stripped by Claude Code before
+//!    injection, so the previous embedded HTML-comment instruction block never
+//!    reliably reached the model — a real `@import` does.
+//!
+//!    The exact import token differs per scope because Claude Code resolves a
+//!    relative `@path` relative to the file containing the import (verified
+//!    empirically against `claude` 2.1.148, 2026-05-22 — see SUMMARY):
+//!      - **user**: `~/.claude/CLAUDE.md` imports `@LACON.md` → `~/.claude/LACON.md`.
+//!      - **project**: `./CLAUDE.md` (repo root) imports `@.claude/LACON.md` →
+//!        `./.claude/LACON.md`.
+//!
+//!    The extensionless `@LACON` does NOT resolve and is therefore not used.
+//!
+//! For **project** scope only: if `./CLAUDE.md` does not exist, a warning is
+//! printed (this may not be a Claude Code setup) and the file is created
+//! carrying the reference. For **user** scope, `~/.claude/CLAUDE.md` is expected
+//! to already exist; the reference is appended/refreshed idempotently.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 
-const LACON_START: &str = "<!-- lacon:start -->";
-const LACON_END: &str = "<!-- lacon:end -->";
+/// `LACON.md` body. MUST mention `!!` and `LACON_DISABLE=1` so the user-trust
+/// property holds. Exact phrasing is the author's discretion.
+const LACON_MD_BODY: &str = "# lacon\n\nBash command output in this environment is filtered by \
+[lacon](https://github.com/) to reduce token usage — it trims noisy build/test output before it \
+reaches the model, without dropping signal.\n\n## Bypassing the filter\n\n- Prefix a single command \
+with `!!` to run it unfiltered (e.g. `!! pnpm test`).\n- Set `LACON_DISABLE=1` to disable filtering \
+entirely for a command or session.\n";
 
-/// CLAUDE.md note body (D-14). MUST mention `!!` and `LACON_DISABLE=1` so the
-/// user trust property holds. Exact phrasing is the author's discretion.
-const BLOCK_BODY: &str = "Bash output is filtered by lacon to reduce token usage. Bypass one command \
-with the `!!` prefix (e.g., `!! pnpm test`). Disable filtering entirely with `LACON_DISABLE=1`.";
+/// The scope-specific Claude Code `@import` reference written into CLAUDE.md.
+///
+/// These are the EMPIRICALLY VERIFIED resolvable forms (claude 2.1.148): a
+/// relative `@path` resolves relative to the importing file's directory. The
+/// extensionless `@LACON` does NOT resolve, so it is deliberately not used.
+const PROJECT_IMPORT_LINE: &str = "@.claude/LACON.md";
+const USER_IMPORT_LINE: &str = "@LACON.md";
+
+/// Which scope an install targets.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Scope {
+    Project,
+    User,
+}
+
+impl Scope {
+    fn label(self) -> &'static str {
+        match self {
+            Scope::Project => "project",
+            Scope::User => "user",
+        }
+    }
+}
+
+/// Fully-resolved install paths + the import token for one scope.
+struct ScopePaths {
+    scope: Scope,
+    /// Rules skeleton directory (`.gitkeep` is created inside it).
+    rules_dir: PathBuf,
+    /// `settings.json` to install the PreToolUse(Bash) hook into.
+    settings_path: PathBuf,
+    /// Standalone instructions file.
+    lacon_md_path: PathBuf,
+    /// CLAUDE.md that should carry the `@import` reference.
+    claude_md_path: PathBuf,
+    /// The exact, scope-correct `@import` line to install into `claude_md_path`.
+    import_line: &'static str,
+    /// Whether a missing `claude_md_path` is a warn-and-create case (project) or
+    /// expected-to-exist-but-still-create case (user). Both create the file; only
+    /// project warns. Captured as a flag so the message is scope-specific.
+    warn_if_claude_md_missing: bool,
+}
 
 /// Entry point dispatched from `cli.rs`'s `Init` variant.
 ///
+/// `user` / `project` come from the matching clap flags. Selection:
+/// - either/both flag set → install that/those scope(s);
+/// - neither flag set + a TTY on stdin → interactively prompt for the scope;
+/// - neither flag set + NOT a TTY (CI / scripted / hermetic tests) → do not
+///   block; default to **project** scope.
+///
 /// Returns `Ok(0)` on success, `Ok(1)` on a recoverable user/IO error (with a
 /// `lacon init:`-prefixed stderr message), mirroring the `validate` convention.
-pub fn execute() -> anyhow::Result<i32> {
-    let cwd = std::env::current_dir()?;
+pub fn execute(user: bool, project: bool) -> anyhow::Result<i32> {
+    let scopes = match select_scopes(user, project) {
+        Ok(s) => s,
+        Err(code) => return Ok(code),
+    };
 
-    // Step A: `.lacon/` skeleton (+ .gitkeep so the dir survives `git clone`).
-    let lacon_dir = cwd.join(".lacon");
-    std::fs::create_dir_all(&lacon_dir)?;
-    std::fs::write(lacon_dir.join(".gitkeep"), b"")?;
+    for scope in scopes {
+        let paths = match resolve_scope_paths(scope) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!(
+                    "lacon init: failed to resolve {} scope paths: {e}",
+                    scope.label()
+                );
+                return Ok(1);
+            }
+        };
+        println!("lacon init: installing {} scope", scope.label());
+        match install_scope(&paths)? {
+            0 => {}
+            code => return Ok(code),
+        }
+    }
 
-    // Step B: `.claude/settings.json` walk — install/refresh the lacon hook.
-    let settings_path = cwd.join(".claude").join("settings.json");
-    let mut settings = match std::fs::read_to_string(&settings_path) {
+    Ok(0)
+}
+
+/// Resolve the set of scopes to install from the two flags + TTY heuristic.
+///
+/// Returns `Err(exit_code)` only when the interactive prompt yields no usable
+/// answer (so `execute` can surface a clean `Ok(code)`).
+fn select_scopes(user: bool, project: bool) -> Result<Vec<Scope>, i32> {
+    if user || project {
+        let mut scopes = Vec::with_capacity(2);
+        if project {
+            scopes.push(Scope::Project);
+        }
+        if user {
+            scopes.push(Scope::User);
+        }
+        return Ok(scopes);
+    }
+
+    // Neither flag passed.
+    use std::io::IsTerminal;
+    if std::io::stdin().is_terminal() {
+        prompt_for_scope()
+    } else {
+        // Non-interactive (CI / scripted / hermetic tests): never block on a
+        // prompt — use the documented deterministic default.
+        eprintln!(
+            "lacon init: no scope flag and non-interactive stdin; defaulting to project scope \
+             (pass --user and/or --project to choose explicitly)"
+        );
+        Ok(vec![Scope::Project])
+    }
+}
+
+/// Interactive one-of-three scope prompt (TTY only). Implemented with a plain
+/// `stdin().read_line` (no TUI crate) — the empirical D-ux measurement found a
+/// TUI select crate (dialoguer) adds transitive deps and ~27 KB to the single
+/// `lacon` binary for a binary-ish choice that a one-line read covers; see
+/// SUMMARY. Never reached in hermetic tests (those always pass a flag).
+fn prompt_for_scope() -> Result<Vec<Scope>, i32> {
+    use std::io::Write;
+    print!(
+        "Install lacon for which scope?\n  [p] project (this directory)\n  [u] user (~/.claude, global)\n  [b] both\nChoice [p/u/b] (default p): "
+    );
+    let _ = std::io::stdout().flush();
+
+    let mut line = String::new();
+    if std::io::stdin().read_line(&mut line).is_err() {
+        eprintln!("lacon init: failed to read scope selection");
+        return Err(1);
+    }
+    match line.trim().to_ascii_lowercase().as_str() {
+        "" | "p" | "project" => Ok(vec![Scope::Project]),
+        "u" | "user" => Ok(vec![Scope::User]),
+        "b" | "both" => Ok(vec![Scope::Project, Scope::User]),
+        other => {
+            eprintln!("lacon init: unrecognized scope '{other}'; expected p, u, or b");
+            Err(1)
+        }
+    }
+}
+
+/// Compute the three install paths + import token for a scope.
+fn resolve_scope_paths(scope: Scope) -> anyhow::Result<ScopePaths> {
+    match scope {
+        Scope::Project => {
+            let cwd = std::env::current_dir()?;
+            Ok(ScopePaths {
+                scope,
+                rules_dir: cwd.join(".lacon"),
+                settings_path: cwd.join(".claude").join("settings.json"),
+                lacon_md_path: cwd.join(".claude").join("LACON.md"),
+                claude_md_path: cwd.join("CLAUDE.md"),
+                import_line: PROJECT_IMPORT_LINE,
+                warn_if_claude_md_missing: true,
+            })
+        }
+        Scope::User => {
+            // `~/.claude/*` triple via etcetera::home_dir() (reads $HOME, which
+            // tests override). Do NOT use config_dir() here — that is the XDG
+            // config dir, not `$HOME/.claude`.
+            let home = etcetera::home_dir()?;
+            let claude_dir = home.join(".claude");
+            // User rules skeleton lives at the XDG config dir the loader reads
+            // (mirrors loader.rs / doctor.rs), which honours XDG_CONFIG_HOME.
+            use etcetera::BaseStrategy;
+            let config_dir = etcetera::choose_base_strategy()?.config_dir();
+            Ok(ScopePaths {
+                scope,
+                rules_dir: config_dir.join("lacon").join("rules"),
+                settings_path: claude_dir.join("settings.json"),
+                lacon_md_path: claude_dir.join("LACON.md"),
+                claude_md_path: claude_dir.join("CLAUDE.md"),
+                import_line: USER_IMPORT_LINE,
+                warn_if_claude_md_missing: false,
+            })
+        }
+    }
+}
+
+/// Run the three install steps against one scope's resolved paths.
+///
+/// Returns `Ok(0)` on success or `Ok(1)` on a recoverable error (after printing
+/// a `lacon init:` stderr message), matching `execute`'s contract.
+fn install_scope(paths: &ScopePaths) -> anyhow::Result<i32> {
+    // Step 1: rules skeleton dir + .gitkeep.
+    if let Err(e) = std::fs::create_dir_all(&paths.rules_dir) {
+        eprintln!(
+            "lacon init: failed to create rules dir {}: {e}",
+            paths.rules_dir.display()
+        );
+        return Ok(1);
+    }
+    if let Err(e) = std::fs::write(paths.rules_dir.join(".gitkeep"), b"") {
+        eprintln!("lacon init: failed to write .gitkeep: {e}");
+        return Ok(1);
+    }
+
+    // Step 2: settings.json hook (scrub-then-reinsert + atomic, perm-preserving).
+    let mut settings = match std::fs::read_to_string(&paths.settings_path) {
         Ok(text) => match serde_json::from_str::<Value>(&text) {
             Ok(value) => value,
             Err(e) => {
                 eprintln!(
-                    "lacon init: failed to parse .claude/settings.json: {e}"
+                    "lacon init: failed to parse {}: {e}",
+                    paths.settings_path.display()
                 );
                 return Ok(1);
             }
         },
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => json!({}),
         Err(e) => {
-            eprintln!("lacon init: failed to read .claude/settings.json: {e}");
+            eprintln!(
+                "lacon init: failed to read {}: {e}",
+                paths.settings_path.display()
+            );
             return Ok(1);
         }
     };
-    // Defensive: if the file parsed to a non-object (e.g. a bare array or
-    // scalar), it is not a valid Claude Code settings file. Refuse rather than
-    // clobber.
+    // Defensive: a non-object settings file is not valid Claude Code config.
     if !settings.is_object() {
         eprintln!(
-            "lacon init: .claude/settings.json is not a JSON object; \
-             refusing to overwrite"
+            "lacon init: {} is not a JSON object; refusing to overwrite",
+            paths.settings_path.display()
         );
         return Ok(1);
     }
     install_lacon_hook(&mut settings);
-    if let Err(e) = atomic_write_json(&settings_path, &settings) {
-        eprintln!("lacon init: failed to write .claude/settings.json: {e}");
+    if let Err(e) = atomic_write_json(&paths.settings_path, &settings) {
+        eprintln!(
+            "lacon init: failed to write {}: {e}",
+            paths.settings_path.display()
+        );
         return Ok(1);
     }
 
-    // Step C: `CLAUDE.md` walk — append/refresh the marker block.
-    let claude_md_path = cwd.join("CLAUDE.md");
-    let existing_md = match std::fs::read_to_string(&claude_md_path) {
+    // Step 3a: standalone LACON.md (overwritten with canonical body each run).
+    if let Some(parent) = paths.lacon_md_path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            eprintln!("lacon init: failed to create {}: {e}", parent.display());
+            return Ok(1);
+        }
+    }
+    if let Err(e) = std::fs::write(&paths.lacon_md_path, LACON_MD_BODY) {
+        eprintln!(
+            "lacon init: failed to write {}: {e}",
+            paths.lacon_md_path.display()
+        );
+        return Ok(1);
+    }
+
+    // Step 3b: idempotent @import reference in CLAUDE.md.
+    let existing_md = match std::fs::read_to_string(&paths.claude_md_path) {
         Ok(text) => text,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            if paths.warn_if_claude_md_missing {
+                eprintln!(
+                    "lacon init: warning — {} does not exist; this may not be a Claude Code setup. \
+                     Creating it with the lacon import reference.",
+                    paths.claude_md_path.display()
+                );
+            }
+            String::new()
+        }
         Err(e) => {
-            eprintln!("lacon init: failed to read CLAUDE.md: {e}");
+            eprintln!(
+                "lacon init: failed to read {}: {e}",
+                paths.claude_md_path.display()
+            );
             return Ok(1);
         }
     };
-    let new_md = install_claude_md_block(&existing_md, BLOCK_BODY);
-    if let Err(e) = std::fs::write(&claude_md_path, new_md) {
-        eprintln!("lacon init: failed to write CLAUDE.md: {e}");
+    let new_md = install_reference_line(&existing_md, paths.import_line);
+    if let Err(e) = std::fs::write(&paths.claude_md_path, new_md) {
+        eprintln!(
+            "lacon init: failed to write {}: {e}",
+            paths.claude_md_path.display()
+        );
         return Ok(1);
     }
 
     println!(
-        "lacon init: installed (.lacon/, .claude/settings.json hook, CLAUDE.md note)"
+        "lacon init: {} scope installed ({}, {} hook, {} + {} import)",
+        paths.scope.label(),
+        paths.rules_dir.display(),
+        paths.settings_path.display(),
+        paths.lacon_md_path.display(),
+        paths.import_line,
     );
     Ok(0)
 }
 
 /// Install (or refresh) the lacon-managed `PreToolUse(Bash)` hook entry inside
-/// `settings.hooks.PreToolUse[]` (D-11, D-12, D-28).
+/// `settings.hooks.PreToolUse[]`.
 ///
 /// Scrub-then-reinsert: existing lacon entries (fingerprinted by command-string
 /// prefix) are stripped, then exactly one canonical entry is appended. This is
@@ -168,123 +405,48 @@ fn install_lacon_hook(settings: &mut Value) {
     }));
 }
 
-/// Append or refresh the lacon CLAUDE.md note block (D-14).
+/// Install the lacon `@import` reference line into a CLAUDE.md body idempotently.
 ///
-/// - Both markers present and ordered → replace the span between them in place,
-///   preserving all surrounding content.
-/// - Exactly one marker present, or markers in corrupt order (orphan state) →
-///   strip the orphan marker token(s) so the file returns to a clean state,
-///   warn on stderr, then append a fresh well-formed block at EOF. Stripping
-///   first (WR-04) guarantees convergence: a subsequent run sees exactly one
-///   well-formed pair and takes the in-place-replace branch instead of accreting
-///   another block (and never clobbers user content sandwiched in between).
-/// - Neither marker present → append a fresh block at EOF.
-fn install_claude_md_block(existing: &str, block_body: &str) -> String {
-    let start_idx = existing.find(LACON_START);
-    let end_idx = existing.find(LACON_END);
-
-    match (start_idx, end_idx) {
-        (Some(s), Some(e)) if s < e => {
-            let end_inclusive = e + LACON_END.len();
-            let mut out = String::with_capacity(existing.len());
-            out.push_str(&existing[..s]);
-            out.push_str(LACON_START);
-            out.push('\n');
-            out.push_str(block_body);
-            out.push('\n');
-            out.push_str(LACON_END);
-            out.push_str(&existing[end_inclusive..]);
-            out
-        }
-        (Some(_), None) | (None, Some(_)) | (Some(_), Some(_)) => {
-            // (Some, Some) with start >= end is also a corrupt ordering; treat
-            // it like the orphan-marker case. Strip the orphan marker token(s)
-            // first so re-runs converge to a single well-formed block (WR-04).
-            eprintln!(
-                "lacon init: warning — CLAUDE.md has an unmatched lacon marker; \
-                 removing the stray marker and appending a fresh block at EOF"
-            );
-            let cleaned = strip_lacon_markers(existing);
-            append_fresh_block(&cleaned, block_body)
-        }
-        (None, None) => append_fresh_block(existing, block_body),
-    }
-}
-
-/// Remove every `<!-- lacon:start -->` / `<!-- lacon:end -->` marker token from
-/// `text`, leaving the surrounding (user) content intact. Used by the orphan
-/// recovery path (WR-04) to scrub stray markers before appending a fresh block,
-/// so repeated `lacon init` runs converge instead of accreting blocks.
+/// - If `import_line` is already present (matched as a whole line, tolerant of
+///   trailing whitespace), the body is returned unchanged → re-runs are
+///   byte-stable and the line is never appended twice (T-tor-02).
+/// - Otherwise the line is appended at EOF with a clean newline boundary, plus a
+///   blank line of separation when the file is non-empty.
 ///
-/// Also drops a marker's own trailing newline (so removing a marker that sat on
-/// its own line does not leave a blank line behind), but never touches adjacent
-/// user content.
-fn strip_lacon_markers(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while !rest.is_empty() {
-        let next_start = rest.find(LACON_START);
-        let next_end = rest.find(LACON_END);
-        // Find the nearest marker (start or end), whichever comes first.
-        let (pos, marker_len) = match (next_start, next_end) {
-            (Some(s), Some(e)) if s <= e => (s, LACON_START.len()),
-            (Some(_), Some(e)) => (e, LACON_END.len()),
-            (Some(s), None) => (s, LACON_START.len()),
-            (None, Some(e)) => (e, LACON_END.len()),
-            (None, None) => {
-                out.push_str(rest);
-                break;
-            }
-        };
-        out.push_str(&rest[..pos]);
-        let mut after = pos + marker_len;
-        // Consume the marker's own trailing newline so a marker that occupied a
-        // whole line does not leave an empty line behind.
-        if rest.as_bytes().get(after) == Some(&b'\n') {
-            after += 1;
-        }
-        rest = &rest[after..];
+/// A second pass over the output is byte-identical (idempotency).
+fn install_reference_line(existing: &str, import_line: &str) -> String {
+    let already_present = existing.lines().any(|l| l.trim_end() == import_line);
+    if already_present {
+        return existing.to_string();
     }
-    out
-}
 
-/// Append a fresh marker block at EOF, ensuring a clean newline boundary and a
-/// blank line of visual separation from existing content.
-fn append_fresh_block(existing: &str, block_body: &str) -> String {
-    let mut out = String::with_capacity(existing.len() + 256);
+    let mut out = String::with_capacity(existing.len() + import_line.len() + 2);
     out.push_str(existing);
     if !existing.is_empty() && !existing.ends_with('\n') {
         out.push('\n');
     }
     if !existing.is_empty() {
-        out.push('\n'); // visual separation
+        out.push('\n'); // visual separation from prior content
     }
-    out.push_str(LACON_START);
-    out.push('\n');
-    out.push_str(block_body);
-    out.push('\n');
-    out.push_str(LACON_END);
+    out.push_str(import_line);
     out.push('\n');
     out
 }
 
-/// Write `value` to `path` atomically (D-13).
+/// Write `value` to `path` atomically.
 ///
-/// Creates the parent directory (`.claude/`) if missing, serializes with
-/// 2-space pretty indent + trailing newline (Claude Code's conventional style),
-/// then `persist`es a same-directory tempfile via POSIX rename(2) — atomic on
-/// macOS + Linux.
+/// Creates the parent directory if missing, serializes with 2-space pretty
+/// indent + trailing newline (Claude Code's conventional style), then `persist`es
+/// a same-directory tempfile via POSIX rename(2) — atomic on macOS + Linux.
 ///
-/// WR-03: `persist` keeps the *tempfile's* mode (`0600`), not the destination's.
-/// To avoid silently narrowing a pre-existing `settings.json`'s permissions
-/// (e.g. a group-readable file on a shared box), the original mode is read and
+/// `persist` keeps the *tempfile's* mode (`0600`), not the destination's. To
+/// avoid silently narrowing a pre-existing `settings.json`'s permissions (e.g. a
+/// group-readable real `~/.claude/settings.json`), the original mode is read and
 /// re-applied to the tempfile before `persist` when the destination exists.
 fn atomic_write_json(path: &Path, value: &Value) -> anyhow::Result<()> {
     use std::io::Write;
 
-    let parent = path
-        .parent()
-        .expect(".claude/settings.json has a parent directory");
+    let parent = path.parent().expect("settings.json has a parent directory");
     std::fs::create_dir_all(parent)?;
 
     let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
@@ -293,16 +455,13 @@ fn atomic_write_json(path: &Path, value: &Value) -> anyhow::Result<()> {
     tmp.write_all(b"\n")?;
     tmp.flush()?;
 
-    // Preserve the destination's existing permissions across the atomic replace
-    // (WR-03). Unix-only: v1 targets macOS + Linux, and a Unix mode is the only
-    // permission concept the spec cares about. Best-effort — a metadata read
-    // failure must not abort the (more important) atomic write.
+    // Preserve the destination's existing permissions across the atomic replace.
+    // Unix-only: v1 targets macOS + Linux. Best-effort — a metadata read failure
+    // must not abort the (more important) atomic write.
     #[cfg(unix)]
     {
         if let Ok(meta) = std::fs::metadata(path) {
             let perms = meta.permissions();
-            // Apply the original file's mode to the tempfile so `persist` (which
-            // keeps the tempfile's perms) lands the file with the original mode.
             let _ = std::fs::set_permissions(tmp.path(), perms);
         }
     }
@@ -392,83 +551,66 @@ mod tests {
     }
 
     #[test]
-    fn claude_md_appends_block_to_empty() {
-        let out = install_claude_md_block("", BLOCK_BODY);
-        assert!(out.contains(LACON_START));
-        assert!(out.contains(LACON_END));
-        assert!(out.contains("!!"));
-        assert!(out.contains("LACON_DISABLE"));
+    fn reference_line_appends_to_empty() {
+        let out = install_reference_line("", PROJECT_IMPORT_LINE);
+        assert_eq!(out, format!("{PROJECT_IMPORT_LINE}\n"));
+        assert!(out.contains(PROJECT_IMPORT_LINE));
     }
 
     #[test]
-    fn claude_md_is_idempotent() {
-        let first = install_claude_md_block("# My Project\n\nSome notes.\n", BLOCK_BODY);
-        let second = install_claude_md_block(&first, BLOCK_BODY);
-        assert_eq!(first, second, "second pass replaces the block in place");
-        // Pre-existing content survives.
-        assert!(second.starts_with("# My Project"));
-        assert!(second.contains("Some notes."));
+    fn reference_line_appends_with_separation_to_nonempty() {
+        let out = install_reference_line("# My Project\n\nNotes.\n", USER_IMPORT_LINE);
+        assert!(out.starts_with("# My Project"));
+        assert!(out.contains("Notes."));
+        // Exactly one import line, separated by a blank line.
+        assert!(out.ends_with(&format!("\n\n{USER_IMPORT_LINE}\n")));
     }
 
     #[test]
-    fn claude_md_orphan_marker_strips_stray_and_appends_fresh() {
-        let existing = "# Project\n\n<!-- lacon:start -->\nstale\n";
-        let out = install_claude_md_block(existing, BLOCK_BODY);
-        // User content survives; the orphan START marker is stripped (WR-04) so
-        // the file has exactly one well-formed pair afterward.
-        assert!(out.contains("# Project"));
-        assert!(out.contains("stale"));
+    fn reference_line_adds_trailing_newline_when_missing() {
+        // File with no trailing newline must still get a clean boundary.
+        let out = install_reference_line("no newline", PROJECT_IMPORT_LINE);
+        assert!(out.contains("no newline\n"));
+        assert!(out.trim_end().ends_with(PROJECT_IMPORT_LINE));
+    }
+
+    #[test]
+    fn reference_line_is_idempotent() {
+        let first = install_reference_line("# Project\n\nSome notes.\n", PROJECT_IMPORT_LINE);
+        let second = install_reference_line(&first, PROJECT_IMPORT_LINE);
+        assert_eq!(first, second, "second pass is byte-identical");
         assert_eq!(
-            out.matches(LACON_START).count(),
+            first.matches(PROJECT_IMPORT_LINE).count(),
             1,
-            "exactly one start marker after recovery, got: {out}"
+            "import line appears exactly once"
         );
+    }
+
+    #[test]
+    fn reference_line_detects_existing_with_trailing_whitespace() {
+        // A pre-existing import line with trailing spaces must still be detected
+        // so re-runs do not append a duplicate.
+        let existing = format!("# Project\n\n{PROJECT_IMPORT_LINE}   \n");
+        let out = install_reference_line(&existing, PROJECT_IMPORT_LINE);
         assert_eq!(
-            out.matches(LACON_END).count(),
-            1,
-            "exactly one end marker after recovery, got: {out}"
+            out, existing,
+            "trailing-whitespace match leaves file unchanged"
         );
+        assert_eq!(out.matches(PROJECT_IMPORT_LINE).count(), 1);
     }
 
     #[test]
-    fn claude_md_orphan_marker_recovery_is_idempotent() {
-        // WR-04: the old code accreted a block on every run and could clobber
-        // content between the orphan and the appended block. Recovery must now
-        // converge to a stable file across repeated runs.
-        let existing = "# Project\n\n<!-- lacon:start -->\nstale\n";
-        let first = install_claude_md_block(existing, BLOCK_BODY);
-        let second = install_claude_md_block(&first, BLOCK_BODY);
-        assert_eq!(
-            first, second,
-            "orphan recovery must converge (idempotent across runs)"
-        );
-        // And it must stay a single well-formed block, not accrete.
-        assert_eq!(second.matches(LACON_START).count(), 1);
-        assert_eq!(second.matches(LACON_END).count(), 1);
-        // User content preserved.
-        assert!(second.contains("# Project"));
-        assert!(second.contains("stale"));
+    fn project_and_user_import_tokens_are_the_verified_resolvable_forms() {
+        // Guard against regressing to the non-resolving extensionless `@LACON`.
+        assert_eq!(PROJECT_IMPORT_LINE, "@.claude/LACON.md");
+        assert_eq!(USER_IMPORT_LINE, "@LACON.md");
+        assert_ne!(PROJECT_IMPORT_LINE, "@LACON");
+        assert_ne!(USER_IMPORT_LINE, "@LACON");
     }
 
     #[test]
-    fn claude_md_orphan_end_marker_recovers() {
-        // An orphan END marker (the other half) is also stripped + recovered.
-        let existing = "# Project\n\n<!-- lacon:end -->\n";
-        let out = install_claude_md_block(existing, BLOCK_BODY);
-        assert_eq!(out.matches(LACON_START).count(), 1);
-        assert_eq!(out.matches(LACON_END).count(), 1);
-        let again = install_claude_md_block(&out, BLOCK_BODY);
-        assert_eq!(out, again, "end-marker recovery is idempotent too");
-    }
-
-    #[test]
-    fn strip_lacon_markers_removes_both_kinds() {
-        let text = "before\n<!-- lacon:start -->\nmid\n<!-- lacon:end -->\nafter\n";
-        let cleaned = strip_lacon_markers(text);
-        assert!(!cleaned.contains(LACON_START));
-        assert!(!cleaned.contains(LACON_END));
-        assert!(cleaned.contains("before"));
-        assert!(cleaned.contains("mid"));
-        assert!(cleaned.contains("after"));
+    fn lacon_md_body_mentions_bypass_mechanics() {
+        assert!(LACON_MD_BODY.contains("!!"));
+        assert!(LACON_MD_BODY.contains("LACON_DISABLE"));
     }
 }
