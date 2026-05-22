@@ -103,6 +103,28 @@ pub fn execute(id: String) -> anyhow::Result<i32> {
             return Ok(1);
         }
     };
+    // ─── Step 5b: merge stored stdout then stderr (D-04 v1 invariant) ───────
+    // WR-03: v1 capture ALWAYS stores the entire merged stream in the `stdout`
+    // column and leaves `stderr` EMPTY — see `run.rs` `RawOutput { stdout, stderr:
+    // Vec::new() }` (D-04: there is no separable stderr stream by the time raw
+    // bytes exist; the runtime interleaves both into a single os_pipe). So this
+    // `stdout`-then-`stderr` append is a NO-OP for every capture-originated row.
+    //
+    // The two halves of this contract live in different crates with no shared
+    // type, so make the dependency explicit: assert the invariant in debug builds.
+    // It is a `debug_assert!` (compiled out in release), NOT a hard panic,
+    // because legacy / hand-seeded rows — e.g. the masked seeded test in
+    // `cli_explain.rs` — predate D-04 and may store non-empty `stderr`; we must
+    // not crash `lacon explain` on those. If a FUTURE capture path ever populates
+    // `stderr`, this fires in tests/debug, flagging that the append ORDER here
+    // (stdout-then-stderr) would re-order interleaved output and break byte-exact
+    // replay — at which point the merge must move to arrival-order interleave.
+    debug_assert!(
+        stderr.is_empty(),
+        "WR-03/D-04: v1 capture guarantees an empty stderr column (run.rs stores \
+         the merged stream in stdout, stderr: Vec::new()); a non-empty stderr here \
+         means the stdout-then-stderr append would re-order interleaved output"
+    );
     let mut merged: Vec<u8> = stdout;
     merged.extend_from_slice(&stderr);
 
