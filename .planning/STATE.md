@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
+status: verifying
 stopped_at: Phase 7 context gathered (assumptions mode)
-last_updated: "2026-05-22T21:10:32.144Z"
-last_activity: 2026-05-22 -- Phase 7 planning complete
+last_updated: "2026-05-22T21:22:52.217Z"
+last_activity: 2026-05-22
 progress:
   total_phases: 7
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 36
-  completed_plans: 35
-  percent: 86
+  completed_plans: 36
+  percent: 100
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-06)
 
 **Core value:** Reduce the bytes an AI coding assistant ingests from bash output by 30–70% without dropping signal — locally, with sub-10ms cold start, and a YAML rule per command.
-**Current focus:** Milestone complete
+**Current focus:** Phase 07 — Close gap: capture raw output on opt-in so lacon explain works end-to-end
 
 ## Current Position
 
-Phase: 7
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-05-22 -- Phase 7 planning complete
+Phase: 07 (Close gap: capture raw output on opt-in so lacon explain works end-to-end) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-05-22
 
 Progress: [██████████] 100%
 
@@ -76,6 +76,7 @@ Progress: [██████████] 100%
 | Phase 04 P02 | 7min | 2 tasks | 2 files |
 | Phase 04-cli-completion-stats-explain-doctor P03 | 4min | 3 tasks | 5 files |
 | Phase 04-cli-completion-stats-explain-doctor P04 | 4min | 3 tasks | 4 files |
+| Phase 07 P01 | 12min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -148,6 +149,8 @@ Full decision log lives in PROJECT.md "Key Decisions" (13 LOCKED ADRs). Recent d
 - [Phase 04]: [Phase 04 PLAN-03]: lacon explain replays stored raw bytes (stdout++stderr) through Runner::filter_bytes selecting the ADR-0010 branch from the stored exit code, renders a hand-rolled raw|filtered side-by-side (no diff crate, D-06); NULL raw_output_id errors pointing at store_raw_outputs (SC2); non-numeric id -> exit 2 never panics (T-04-07); insta NOT adopted (rusqlite stays dev-only, D-01); exit codes 0/1/2 (success / op-failure / bad-input)
 - [Phase ?]: [Phase 04 PLAN-04]: lacon doctor is a fixed five-check sweep (hook install / config-per-layer / rule sweep / DB dir perms 0700 / read-only tracker health) printing one Pass/Fail/Warn line each; exit 0 iff no check hard-fails (D-07). Fresh machine (no settings.json/no history.db) reads informational [warn] not red and exits 0 (D-03); a positively broken state flips it red.
 - [Phase ?]: [Phase 04 PLAN-04]: doctor DB checks use open_readonly ONLY (D-08, T-04-11) and gate on db_path.exists() before opening, so a fresh run never creates history.db (D-04 preserved); doctor.rs has zero Tracker::open refs (grep gate = 0). cli_surface hardened: purge/install/stats --serve each proven non-zero (D-13, REQ-cli-surface-cap).
+- [Phase 07]: [Phase 07 PLAN-01]: raw capture field RunOutcome.raw_captured: Option<Vec<u8>> + RunOptions.capture_raw: bool (default false, derive(Default)); capture form is raw_buffer.join("\n").into_bytes() with NO trailing newline (D-05) — exact inverse of the per-line reader build so filter_bytes' split-on-\n re-split round-trips byte-identically (proven by the Task 3 byte-exact E2E)
+- [Phase 07]: [Phase 07 PLAN-01]: run.rs:275 hard-coded None gap closed — capture flag set from resolved store_raw_outputs via shared load_cfg/config_paths/user_config_dir helpers (flag in run_with_rule, gate in record_invocation read the SAME value); RawOutput{stdout: captured, stderr: Vec::new()} (D-04 merged stream) passed as Some(&raw); existing double-gate in Tracker::record is the sole persist authority (D-07). Default-off path byte-for-byte unchanged (D-03/D-09), no new clippy warnings.
 
 ### Pending Todos
 
@@ -180,6 +183,6 @@ None blocking. Three deferred-to-prototyping open questions assigned to phases a
 
 ## Session Continuity
 
-Last session: 2026-05-22T20:53:29.541Z
+Last session: 2026-05-22T21:22:21.698Z
 Stopped at: Phase 7 context gathered (assumptions mode)
-Resume file: .planning/phases/07-close-gap-capture-raw-output-on-opt-in-so-lacon-explain-work/07-CONTEXT.md
+Resume file: None

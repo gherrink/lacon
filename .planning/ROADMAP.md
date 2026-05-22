@@ -16,7 +16,7 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
 - [x] **Phase 4: CLI completion (`stats`, `explain`, `doctor`)** - Introspection commands backed by tracking data plus the six-command surface cap (completed 2026-05-21)
 - [x] **Phase 5: Bundled Tier 1 rules** - Ten YAML rules with success/failure fixtures and integration tests asserting ≥50% reduction with zero error-line drops (completed 2026-05-22)
 - [x] **Phase 6: v1 ship gate — acceptance & docs** - End-to-end acceptance validation (cold start, hot reload, `pnpm` E2E, `explain` reproducibility, hermetic test coverage) plus README, worked example, and primitive reference (completed 2026-05-22)
-- [ ] **Phase 7: Close gap: capture raw output on opt-in so lacon explain works end-to-end** - Capture pre-filter bytes when `store_raw_outputs` is enabled so `lacon explain <id>` reproduces real invocations end-to-end, not just hand-seeded rows (added 2026-05-22 from v1.0 milestone audit, gaps_found)
+- [x] **Phase 7: Close gap: capture raw output on opt-in so lacon explain works end-to-end** - Capture pre-filter bytes when `store_raw_outputs` is enabled so `lacon explain <id>` reproduces real invocations end-to-end, not just hand-seeded rows (added 2026-05-22 from v1.0 milestone audit, gaps_found) (completed 2026-05-22)
 
 ## Phase Details
 
@@ -142,14 +142,14 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 5 (bundl
 | 4. CLI completion (`stats`, `explain`, `doctor`) | 4/4 | Complete   | 2026-05-21 |
 | 5. Bundled Tier 1 rules | 9/9 | Complete    | 2026-05-22 |
 | 6. v1 ship gate — acceptance & docs | 3/3 | Complete    | 2026-05-22 |
-| 7. Close gap: lacon explain raw-capture | 0/1 | Planned |  |
+| 7. Close gap: lacon explain raw-capture | 1/1 | Complete   | 2026-05-22 |
 
 ### Phase 7: Close gap: capture raw output on opt-in so lacon explain works end-to-end
 
 **Goal:** Capture the pre-filter (raw) bytes of a `lacon run` invocation when `store_raw_outputs` is enabled and persist them to the existing `raw_outputs` table, so `lacon explain <id>` reproduces a real invocation end-to-end (byte-for-byte) instead of only hand-seeded SQL rows. Closes the single root-cause gap from the v1.0 milestone audit — the capture path missing at `run.rs:275` (`raw=None`).
 **Requirements**: REQ-acceptance-explain-reproducibility (acceptance bar), REQ-cli-explain (opt-in functional half), REQ-tracking-raw-outputs-default-off (opt-in functional half)
 **Depends on:** Phase 6
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 07-01-PLAN.md — Gated RunOutcome/RunOptions raw capture (D-01..D-05) + run.rs RawOutput wiring & Some(&raw) record (D-06, D-07) + true E2E lacon run→explain byte-exact test & off-path negative guard (D-08..D-10)
+- [x] 07-01-PLAN.md — Gated RunOutcome/RunOptions raw capture (D-01..D-05) + run.rs RawOutput wiring & Some(&raw) record (D-06, D-07) + true E2E lacon run→explain byte-exact test & off-path negative guard (D-08..D-10)
