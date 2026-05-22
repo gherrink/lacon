@@ -136,5 +136,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 5 (bundl
 | 2. Local tracking | 4/6 | In Progress|  |
 | 3. Claude Code adapter & `lacon init` | 5/5 | Complete   | 2026-05-21 |
 | 4. CLI completion (`stats`, `explain`, `doctor`) | 4/4 | Complete   | 2026-05-21 |
-| 5. Bundled Tier 1 rules | 9/9 | Complete   | 2026-05-22 |
+| 5. Bundled Tier 1 rules | 9/9 | Complete    | 2026-05-22 |
 | 6. v1 ship gate — acceptance & docs | 0/TBD | Not started | - |

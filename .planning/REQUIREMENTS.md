@@ -46,8 +46,8 @@ Requirements for the v1 release. Each maps to exactly one phase in `.planning/RO
 
 ### Bundled rule library
 
-- [ ] **REQ-bundled-rules-tier1**: v1 ships ten Tier 1 bundled rules — `pkg-install`, `cargo-build`, `cargo-test`, `vitest`, `jest`, `pytest`, `tsc`, `eslint`, `git-status`, `docker-build`. Each rule reduces its target commands by **at least 50%** on representative output WITHOUT dropping errors. Each ships at minimum one success-path fixture and one failure-path fixture under `tests/fixtures/<rule-id>/<scenario>/`.
-- [ ] **REQ-bundled-rules-format**: Every bundled rule lands with: a YAML rule file in `bundled-rules/`, a fixture set under `tests/fixtures/<rule-id>/<scenario>/` (`input.txt`, `expected.txt`, `meta.yaml`), an integration test asserting reduction ratio and zero error-line drops, and a doc note in `bundled-rules-roadmap.md`.
+- [x] **REQ-bundled-rules-tier1**: v1 ships ten Tier 1 bundled rules — `pkg-install`, `cargo-build`, `cargo-test`, `vitest`, `jest`, `pytest`, `tsc`, `eslint`, `git-status`, `docker-build`. Each rule reduces its target commands by **at least 50%** on representative output WITHOUT dropping errors. Each ships at minimum one success-path fixture and one failure-path fixture under `tests/fixtures/<rule-id>/<scenario>/`.
+- [x] **REQ-bundled-rules-format**: Every bundled rule lands with: a YAML rule file in `bundled-rules/`, a fixture set under `tests/fixtures/<rule-id>/<scenario>/` (`input.txt`, `expected.txt`, `meta.yaml`), an integration test asserting reduction ratio and zero error-line drops, and a doc note in `bundled-rules-roadmap.md`.
 
 ### Acceptance criteria (v1 ship gate)
 
@@ -194,8 +194,8 @@ Phase mappings populated during ROADMAP creation. 36/36 v1 requirements mapped, 
 | REQ-cli-explain | Phase 4 | Complete |
 | REQ-cli-doctor | Phase 4 | Complete |
 | REQ-cli-surface-cap | Phase 4 | Complete |
-| REQ-bundled-rules-tier1 | Phase 5 | Pending |
-| REQ-bundled-rules-format | Phase 5 | Pending |
+| REQ-bundled-rules-tier1 | Phase 5 | Complete |
+| REQ-bundled-rules-format | Phase 5 | Complete |
 | REQ-acceptance-bundled-reduction | Phase 6 | Pending |
 | REQ-acceptance-pnpm-end-to-end | Phase 6 | Pending |
 | REQ-acceptance-cold-start-budget | Phase 6 | Pending |

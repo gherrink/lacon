@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Phase 5 context gathered (assumptions mode)
-last_updated: "2026-05-22T04:53:31.674Z"
+status: ready_to_plan
+stopped_at: Phase 5 complete (9/9) — ready to discuss Phase 6
+last_updated: 2026-05-22T05:43:28.594Z
 last_activity: 2026-05-22 -- Phase 5 execution started
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 32
-  completed_plans: 23
+  completed_plans: 32
   percent: 67
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-06)
 
 **Core value:** Reduce the bytes an AI coding assistant ingests from bash output by 30–70% without dropping signal — locally, with sub-10ms cold start, and a YAML rule per command.
-**Current focus:** Phase 5 — Bundled Tier 1 rules
+**Current focus:** Phase 6 — v1 ship gate — acceptance & docs
 
 ## Current Position
 
-Phase: 5 (Bundled Tier 1 rules) — EXECUTING
-Plan: 1 of 9
-Status: Executing Phase 5
-Last activity: 2026-05-22 -- Phase 5 execution started
+Phase: 6
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-05-22
 
 Progress: [██████████] 100%
 
@@ -36,7 +36,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 9
+- Total plans completed: 18
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -46,6 +46,7 @@ Progress: [██████████] 100%
 |-------|-------|-------|----------|
 | 03 | 5 | - | - |
 | 04 | 4 | - | - |
+| 5 | 9 | - | - |
 
 **Recent Trend:**
 
