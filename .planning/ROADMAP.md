@@ -14,7 +14,7 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
 - [ ] **Phase 2: Local tracking** - SQLite history at `~/.local/share/lacon/history.db` with privacy contract, retention, and the four required views
 - [x] **Phase 3: Claude Code adapter & `lacon init`** - `PreToolUse` hook with chained-command splitting, TUI bypass, bypass detection, and one-shot project setup (completed 2026-05-21)
 - [x] **Phase 4: CLI completion (`stats`, `explain`, `doctor`)** - Introspection commands backed by tracking data plus the six-command surface cap (completed 2026-05-21)
-- [ ] **Phase 5: Bundled Tier 1 rules** - Ten YAML rules with success/failure fixtures and integration tests asserting ≥50% reduction with zero error-line drops
+- [x] **Phase 5: Bundled Tier 1 rules** - Ten YAML rules with success/failure fixtures and integration tests asserting ≥50% reduction with zero error-line drops (completed 2026-05-22)
 - [ ] **Phase 6: v1 ship gate — acceptance & docs** - End-to-end acceptance validation (cold start, hot reload, `pnpm` E2E, `explain` reproducibility, hermetic test coverage) plus README, worked example, and primitive reference
 
 ## Phase Details
@@ -110,8 +110,8 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
 - [x] 05-05-PLAN.md — git-status (collapse_repeated on untracked block) + 2 fixtures
 - [x] 05-06-PLAN.md — docker-build (drop BuildKit progress, preserve framed errors) + 2 fixtures
 - [x] 05-07-PLAN.md — tsc + eslint (npx-captured, failure-primary, exempt clean) + 4 fixtures
-- [ ] 05-08-PLAN.md — pytest (test-runner family, applies 05-02 verdict) + 2 fixtures
-- [ ] 05-09-PLAN.md — vitest + jest (npx-captured test-runner family) + 4 fixtures
+- [x] 05-08-PLAN.md — pytest (test-runner family, applies 05-02 verdict) + 2 fixtures
+- [x] 05-09-PLAN.md — vitest + jest (npx-captured test-runner family) + 4 fixtures
 
 ### Phase 6: v1 ship gate — acceptance & docs
 **Goal**: All v1 acceptance criteria pass end-to-end on macOS and Linux and the user-facing documentation set (README, worked example, primitive reference) ships — this is the gate at which v1 is shippable.
@@ -136,5 +136,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 5 (bundl
 | 2. Local tracking | 4/6 | In Progress|  |
 | 3. Claude Code adapter & `lacon init` | 5/5 | Complete   | 2026-05-21 |
 | 4. CLI completion (`stats`, `explain`, `doctor`) | 4/4 | Complete   | 2026-05-21 |
-| 5. Bundled Tier 1 rules | 7/9 | In Progress|  |
+| 5. Bundled Tier 1 rules | 9/9 | Complete   | 2026-05-22 |
 | 6. v1 ship gate — acceptance & docs | 0/TBD | Not started | - |
