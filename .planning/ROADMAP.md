@@ -102,7 +102,16 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
   1. All ten Tier 1 rule files exist in `bundled-rules/` and load successfully via the resolver — each has a defined `match`, a non-empty `pipeline`, an `on_error` block where appropriate, and uses only the ten native primitives plus optional `post_process`.
   2. Each of the ten rules has at minimum one success-path fixture and one failure-path fixture under `tests/fixtures/<rule-id>/<scenario>/` with `input.txt`, `expected.txt`, and `meta.yaml` (`command`, `tool_version`, `captured_at`, `os`, `notes`).
   3. The fixture-based integration test (`cargo test --test bundled_rules`) walks the fixture tree, asserts byte-exact match of rule output against `expected.txt`, asserts `len(expected)/len(input) <= 0.5` for primary success-path fixtures (skippable via `exempt_from_reduction_check: true`), and asserts the opt-in `must_keep_lines` substring list when present — all without ever installing `pnpm`/`cargo`/`vitest`/etc. in CI.
-**Plans**: TBD
+**Plans**: 9 plans
+- [ ] 05-01-PLAN.md — Wave 0: fixture-walking runner (bundled_rules.rs) + meta.yaml exit_code schema (D-02) + 10 roadmap doc notes
+- [ ] 05-02-PLAN.md — cargo-test + D-06 cross-bundled extends SPIKE (test-base) — gates the test-runner family
+- [ ] 05-03-PLAN.md — pkg-install (npm/pnpm/yarn, no rewrite per D-11) + 2 fixtures
+- [ ] 05-04-PLAN.md — cargo-build (drop Compiling/status noise, preserve diagnostics) + 2 fixtures
+- [ ] 05-05-PLAN.md — git-status (collapse_repeated on untracked block) + 2 fixtures
+- [ ] 05-06-PLAN.md — docker-build (drop BuildKit progress, preserve framed errors) + 2 fixtures
+- [ ] 05-07-PLAN.md — tsc + eslint (npx-captured, failure-primary, exempt clean) + 4 fixtures
+- [ ] 05-08-PLAN.md — pytest (test-runner family, applies 05-02 verdict) + 2 fixtures
+- [ ] 05-09-PLAN.md — vitest + jest (npx-captured test-runner family) + 4 fixtures
 
 ### Phase 6: v1 ship gate — acceptance & docs
 **Goal**: All v1 acceptance criteria pass end-to-end on macOS and Linux and the user-facing documentation set (README, worked example, primitive reference) ships — this is the gate at which v1 is shippable.
@@ -127,5 +136,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 5 (bundl
 | 2. Local tracking | 4/6 | In Progress|  |
 | 3. Claude Code adapter & `lacon init` | 5/5 | Complete   | 2026-05-21 |
 | 4. CLI completion (`stats`, `explain`, `doctor`) | 4/4 | Complete   | 2026-05-21 |
-| 5. Bundled Tier 1 rules | 0/TBD | Not started | - |
+| 5. Bundled Tier 1 rules | 0/9 | Not started | - |
 | 6. v1 ship gate — acceptance & docs | 0/TBD | Not started | - |
