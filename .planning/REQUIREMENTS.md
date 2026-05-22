@@ -51,18 +51,18 @@ Requirements for the v1 release. Each maps to exactly one phase in `.planning/RO
 
 ### Acceptance criteria (v1 ship gate)
 
-- [ ] **REQ-acceptance-bundled-reduction**: All ten bundled rules reduce their target commands by at least 50% on representative output without dropping errors.
-- [ ] **REQ-acceptance-pnpm-end-to-end**: `lacon init` followed by a `pnpm install` in any new project works end-to-end with no manual config — hook fires, command is wrapped, filtered output reaches the assistant.
-- [ ] **REQ-acceptance-cold-start-budget**: Cold-start binary invocation is under **10ms** (measured on the hook hot path). ADR-0013 tightens this — `lacon run` is now a production code path, invoked thousands of times per session.
-- [ ] **REQ-acceptance-explain-reproducibility**: `lacon explain` correctly reproduces the filtering decision for any tracked invocation that has stored raw output.
-- [ ] **REQ-acceptance-hot-reload**: Rule files can be edited and changes take effect on the next invocation (no daemon, no restart). Resolver invalidates compiled regex cache on file mtime change.
-- [ ] **REQ-acceptance-test-coverage**: Test suite covers each native primitive, the chained-command splitter, and every bundled rule via fixture-based integration tests. CI is hermetic — never installs `pnpm`, `cargo`, etc.
+- [x] **REQ-acceptance-bundled-reduction**: All ten bundled rules reduce their target commands by at least 50% on representative output without dropping errors.
+- [x] **REQ-acceptance-pnpm-end-to-end**: `lacon init` followed by a `pnpm install` in any new project works end-to-end with no manual config — hook fires, command is wrapped, filtered output reaches the assistant.
+- [x] **REQ-acceptance-cold-start-budget**: Cold-start binary invocation is under **10ms** (measured on the hook hot path). ADR-0013 tightens this — `lacon run` is now a production code path, invoked thousands of times per session.
+- [x] **REQ-acceptance-explain-reproducibility**: `lacon explain` correctly reproduces the filtering decision for any tracked invocation that has stored raw output.
+- [x] **REQ-acceptance-hot-reload**: Rule files can be edited and changes take effect on the next invocation (no daemon, no restart). Resolver invalidates compiled regex cache on file mtime change.
+- [x] **REQ-acceptance-test-coverage**: Test suite covers each native primitive, the chained-command splitter, and every bundled rule via fixture-based integration tests. CI is hermetic — never installs `pnpm`, `cargo`, etc.
 
 ### Documentation
 
-- [ ] **REQ-docs-readme**: README with install + quickstart.
-- [ ] **REQ-docs-worked-example**: A worked example: writing a project-specific filter rule.
-- [ ] **REQ-docs-primitive-reference**: Reference for every primitive with at least one example each.
+- [x] **REQ-docs-readme**: README with install + quickstart.
+- [x] **REQ-docs-worked-example**: A worked example: writing a project-specific filter rule.
+- [x] **REQ-docs-primitive-reference**: Reference for every primitive with at least one example each.
 
 ## Vision-derived strategic targets
 
@@ -196,15 +196,15 @@ Phase mappings populated during ROADMAP creation. 36/36 v1 requirements mapped, 
 | REQ-cli-surface-cap | Phase 4 | Complete |
 | REQ-bundled-rules-tier1 | Phase 5 | Complete |
 | REQ-bundled-rules-format | Phase 5 | Complete |
-| REQ-acceptance-bundled-reduction | Phase 6 | Pending |
-| REQ-acceptance-pnpm-end-to-end | Phase 6 | Pending |
-| REQ-acceptance-cold-start-budget | Phase 6 | Pending |
-| REQ-acceptance-explain-reproducibility | Phase 6 | Pending |
-| REQ-acceptance-hot-reload | Phase 6 | Pending |
-| REQ-acceptance-test-coverage | Phase 6 | Pending |
-| REQ-docs-readme | Phase 6 | Pending |
-| REQ-docs-worked-example | Phase 6 | Pending |
-| REQ-docs-primitive-reference | Phase 6 | Pending |
+| REQ-acceptance-bundled-reduction | Phase 6 | Complete |
+| REQ-acceptance-pnpm-end-to-end | Phase 6 | Complete |
+| REQ-acceptance-cold-start-budget | Phase 6 | Complete |
+| REQ-acceptance-explain-reproducibility | Phase 6 | Complete |
+| REQ-acceptance-hot-reload | Phase 6 | Complete |
+| REQ-acceptance-test-coverage | Phase 6 | Complete |
+| REQ-docs-readme | Phase 6 | Complete |
+| REQ-docs-worked-example | Phase 6 | Complete |
+| REQ-docs-primitive-reference | Phase 6 | Complete |
 
 **Coverage:**
 - v1 requirements: 36 total
