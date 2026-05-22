@@ -1,0 +1,6 @@
+command: npm install
+exit_code: 0
+tool_version: "npm 11.12.1"
+os: linux
+exempt_from_reduction_check: false
+notes: "chatty success — install of deprecated deps (request, uuid@3, har-validator) produces 3 npm warn deprecated lines plus funding/audit noise; pipeline keeps only the 'added' summary + the vulnerability count"
