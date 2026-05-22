@@ -1,0 +1,19 @@
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling serde v1.0.228
+   Compiling syn v2.0.117
+   Compiling serde_derive v1.0.228
+   Compiling demo v0.1.0 (/tmp/lacon-cargo/demo)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.25s
+     Running unittests src/main.rs (target/debug/deps/demo-5a51798d95ce3de7)
+
+running 6 tests
+test tests::test_add_one ... ok
+test tests::test_add_two ... ok
+test tests::test_mul_one ... ok
+test tests::test_mul_two ... ok
+test tests::test_sub_one ... ok
+test tests::test_sub_two ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s

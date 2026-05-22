@@ -1,0 +1,19 @@
+command: cargo test
+exit_code: 101
+tool_version: "cargo 1.95.0"
+os: linux
+exempt_from_reduction_check: true
+must_keep_lines:
+  - "test result: FAILED"
+  - "panicked"
+  - "assertion `left == right` failed"
+  - "tests::test_add_two"
+  - "tests::test_sub_two"
+  - "error: test failed"
+notes: >-
+  Same demo crate with 2 failing tests (test_add_two, test_sub_two). cargo test
+  failure exits 101 (RESEARCH A6), not 1 — routes through on_error. Failure
+  context is intentionally preserved (FAILED lines, panic/assertion details,
+  failures: list, test result: FAILED, error: test failed), so this fixture is
+  exempt from the >=50% reduction floor and instead asserts error survival via
+  must_keep_lines. Per-test lines sorted; tmp path anonymized.

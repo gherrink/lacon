@@ -1,0 +1,18 @@
+test tests::test_add_two ... FAILED
+test tests::test_sub_two ... FAILED
+failures:
+---- tests::test_add_two stdout ----
+thread 'tests::test_add_two' (93605) panicked at src/main.rs:21:33:
+assertion `left == right` failed
+  left: 30
+ right: 99
+---- tests::test_sub_two stdout ----
+thread 'tests::test_sub_two' (93609) panicked at src/main.rs:25:33:
+assertion `left == right` failed
+  left: 7
+ right: 0
+failures:
+    tests::test_add_two
+    tests::test_sub_two
+test result: FAILED. 4 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+error: test failed, to rerun pass `--bin demo`
