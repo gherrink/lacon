@@ -1,0 +1,9 @@
+command: cargo build
+exit_code: 0
+tool_version: "cargo 1.95.0"
+captured_at: 2026-05-22
+os: linux
+exempt_from_reduction_check: false
+must_keep_lines:
+  - "warning:"
+notes: "multi-dep build (8 deps) with one unused-variable warning; Updating/Locking/Compiling/Finished dropped, warning block with --> file:line preserved. Tmp path anonymized to /tmp/demo for determinism."
