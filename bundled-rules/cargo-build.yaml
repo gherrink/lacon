@@ -1,0 +1,24 @@
+id: cargo-build
+description: cargo build / cargo check
+match:
+  any:
+    - { command: cargo, args_prefix: [build] }
+    - { command: cargo, args_prefix: [check] }
+# Success path: blacklist-drop the repeated status lines (one Compiling per dep,
+# plus Updating/Locking/Finished). Everything else passes through, so warning
+# diagnostic blocks (warning:, -->, |, = note:) survive intact — they have a
+# variable shape that a whitelist would mangle.
+pipeline:
+  - strip_ansi
+  - drop_regex: '^\s*Compiling '
+  - drop_regex: '^\s*Updating '
+  - drop_regex: '^\s*Locking '
+  - drop_regex: '^\s*Finished '
+  # No byte cap here — the loader auto-injects the 32768 ceiling (D-07).
+# Failure path (exit 101): keep the error marker plus the --> / | context that
+# follows. ^error matches both error[E0308]: (coded) and error: (uncoded).
+on_error:
+  pipeline:
+    - strip_ansi
+    - keep_around_match: { pattern: '^error', before: 0, after: 15 }
+    - keep_tail: { lines: 40 }
