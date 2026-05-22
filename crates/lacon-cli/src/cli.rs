@@ -61,6 +61,7 @@ pub enum CliCommand {
     Explain {
         id: String,
     },
-    /// Verify hooks installed, configs valid, rules parse.
+    /// Verify lacon setup at BOTH project and user scope (hook + LACON.md +
+    /// `@import` reference per scope), plus configs/rules/DB health.
     Doctor,
 }
