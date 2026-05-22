@@ -1,0 +1,28 @@
+id: cargo-test
+description: >-
+  cargo test — drop per-test "... ok" PASS lines and the Compiling/Finished/
+  Running/"running N tests" scaffolding on success, keeping the "test result:"
+  summary. On failure (exit 101) route through on_error, preserving the FAILED
+  lines, panic/assertion details, the failures: list, and the test result:
+  FAILED summary. Extends bundled/test-base (D-06 spike): the parent contributes
+  strip_ansi to the head of this success pipeline.
+extends: bundled/test-base
+match:
+  command: cargo
+  args_prefix: [test]
+pipeline:
+  # strip_ansi is prepended by the parent (bundled/test-base) per ADR-0012.
+  - drop_regex: '^test .+ \.\.\. ok$'
+  - drop_regex: '^\s*Compiling '
+  - drop_regex: '^\s*Finished '
+  - drop_regex: '^\s*Running '
+  - drop_regex: '^\s*Updating '
+  - drop_regex: '^\s*Locking '
+  - drop_regex: '^\s*Downloading '
+  - drop_regex: '^\s*Downloaded '
+  - drop_regex: '^running \d+ tests$'
+on_error:
+  pipeline:
+    - strip_ansi
+    - keep_regex: '(\.\.\. FAILED$|panicked|assertion|^\s*left:|^\s*right:|^test result:|^error:|^---- .* ----$|^failures:|^\s+tests::)'
+    - keep_tail: { lines: 80 }

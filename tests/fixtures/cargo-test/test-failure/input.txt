@@ -1,0 +1,37 @@
+   Compiling demo v0.1.0 (/tmp/lacon-cargo/demo)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.19s
+     Running unittests src/main.rs (target/debug/deps/demo-5a51798d95ce3de7)
+
+running 6 tests
+test tests::test_add_one ... ok
+test tests::test_add_two ... FAILED
+test tests::test_mul_one ... ok
+test tests::test_mul_two ... ok
+test tests::test_sub_one ... ok
+test tests::test_sub_two ... FAILED
+
+failures:
+
+---- tests::test_add_two stdout ----
+
+thread 'tests::test_add_two' (93605) panicked at src/main.rs:21:33:
+assertion `left == right` failed
+  left: 30
+ right: 99
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- tests::test_sub_two stdout ----
+
+thread 'tests::test_sub_two' (93609) panicked at src/main.rs:25:33:
+assertion `left == right` failed
+  left: 7
+ right: 0
+
+
+failures:
+    tests::test_add_two
+    tests::test_sub_two
+
+test result: FAILED. 4 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--bin demo`

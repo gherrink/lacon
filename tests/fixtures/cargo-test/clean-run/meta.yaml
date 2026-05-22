@@ -1,0 +1,11 @@
+command: cargo test
+exit_code: 0
+tool_version: "cargo 1.95.0"
+os: linux
+exempt_from_reduction_check: false
+notes: >-
+  Multi-dep (serde+derive, anyhow, itoa, ryu) demo crate, 6 passing tests.
+  Primary success fixture. 7 Compiling lines + 6 per-test "... ok" lines drop;
+  the "test result: ok" summary survives. Reduction ratio ~0.14 (well under
+  0.5). Per-test lines sorted for deterministic capture (cargo test ordering
+  is nondeterministic); tmp path anonymized. exit 0 -> success pipeline.
