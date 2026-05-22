@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 Phase: 6
 Plan: Not started
 Status: Milestone complete
-Last activity: 2026-05-22 - Completed quick task 260522-s33: Scrub stale phase-stub annotations from CLI help strings
+Last activity: 2026-05-22 - Completed quick task 260522-tor: Scope-aware `lacon init` (--project/--user) with LACON.md + verified @import reference
 
 Progress: [██████████] 100%
 
@@ -161,6 +161,7 @@ None blocking. Three deferred-to-prototyping open questions assigned to phases a
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260522-s33 | Scrub stale phase-stub annotations from CLI help strings | 2026-05-22 | 3d8d849 | [260522-s33-scrub-cli-help-phase-stubs](./quick/260522-s33-scrub-cli-help-phase-stubs/) |
+| 260522-tor | Scope-aware `lacon init` (--project/--user) with LACON.md + verified @import reference | 2026-05-22 | 4697099 | [260522-tor-init-choose-project-vs-user-local-scope-](./quick/260522-tor-init-choose-project-vs-user-local-scope-/) |
 
 ### Note on requirement count
 
