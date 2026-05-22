@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: milestone_complete
-stopped_at: Milestone complete (Phase 6 was final phase)
-last_updated: 2026-05-22T17:50:00.000Z
-last_activity: 2026-05-22 -- Phase 6 macOS CI human-UAT verified; milestone complete
+status: in_progress
+stopped_at: Phase 7 context gathered (assumptions mode)
+last_updated: "2026-05-22T20:53:29.548Z"
+last_activity: "2026-05-22 - Completed quick task 260522-v4a: Scope-aware `lacon doctor` (checks project + user setup with opt-in posture)"
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 6
   total_plans: 35
   completed_plans: 35
-  percent: 100
+  percent: 86
 ---
 
 # Project State
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 
 ## Current Position
 
-Phase: 6
+Phase: 7
 Plan: Not started
-Status: Milestone complete
+Status: in_progress
 Last activity: 2026-05-22 - Completed quick task 260522-v4a: Scope-aware `lacon doctor` (checks project + user setup with opt-in posture)
 
 Progress: [██████████] 100%
@@ -78,6 +78,10 @@ Progress: [██████████] 100%
 | Phase 04-cli-completion-stats-explain-doctor P04 | 4min | 3 tasks | 4 files |
 
 ## Accumulated Context
+
+### Roadmap Evolution
+
+- Phase 7 added: Close gap: capture raw output on opt-in so lacon explain works end-to-end (from v1.0 milestone audit gaps_found)
 
 ### Decisions
 
@@ -176,6 +180,6 @@ None blocking. Three deferred-to-prototyping open questions assigned to phases a
 
 ## Session Continuity
 
-Last session: 2026-05-22T08:20:38.806Z
-Stopped at: Phase 6 context gathered (assumptions mode)
-Resume file: .planning/phases/06-v1-ship-gate-acceptance-docs/06-CONTEXT.md
+Last session: 2026-05-22T20:53:29.541Z
+Stopped at: Phase 7 context gathered (assumptions mode)
+Resume file: .planning/phases/07-close-gap-capture-raw-output-on-opt-in-so-lacon-explain-work/07-CONTEXT.md
