@@ -1,0 +1,38 @@
+id: pkg-install
+description: npm / pnpm / yarn install
+# D-10: match concrete install invocations only (npm/pnpm/yarn install + pnpm i + pnpm add).
+# Does NOT match `pnpm test` / `pnpm lint` (resolution-dependent aliases).
+match:
+  any:
+    - { command: npm, args_prefix: [install] }
+    - { command: pnpm, args_prefix: [install] }
+    - { command: pnpm, args_prefix: [i] }
+    - { command: pnpm, args_prefix: [add] }
+    - { command: yarn, args_prefix: [install] }
+# D-11: NO rewrite block. Research empirically proved that the only cross-manager
+# silent flag (`--silent`) suppresses ALL error output on failure for npm and pnpm
+# (0 bytes, exit 1) — the E404 error is deleted before lacon ever sees it, violating
+# the no-drop contract. All reduction is pipeline-side only.
+pipeline:
+  - strip_ansi
+  - drop_regex: '^npm warn deprecated '
+  - drop_regex: '^\[WARN\] '
+  - drop_regex: '^Progress: '
+  - drop_regex: '^\s*[╭│╰]'
+  - drop_regex: '^Packages: \+'
+  - drop_regex: '^\++$'
+  - drop_regex: '^\[[0-9]/4\] '
+  - drop_regex: '^info '
+  - drop_regex: '^warning '
+  - drop_regex: '^success '
+  - drop_regex: '^\d+ packages are looking for funding'
+  - drop_regex: '^  run `npm fund`'
+  - drop_regex: '^Some issues need review'
+  - drop_regex: '^a different dependency'
+  - drop_regex: '^Run `npm audit`'
+  # NO max_bytes — auto-injected (D-07).
+on_error:
+  pipeline:
+    - strip_ansi
+    - keep_around_match: { pattern: '(?i)(error|ERR_|fatal)', before: 1, after: 10 }
+    - keep_tail: { lines: 40 }
