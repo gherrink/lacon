@@ -181,12 +181,24 @@ fn exit_code_from_stored(stored: i64) -> i32 {
     })
 }
 
-/// Split merged bytes into lines (lossy UTF-8), mirroring `Runner::filter_bytes`.
+/// Split merged bytes into lines (lossy UTF-8), mirroring `Runner::filter_bytes`
+/// (and its `split_merged_bytes` helper in `runtime/mod.rs`).
+///
+/// WR-01: empty input maps to ZERO lines, NOT one blank line, so the rendered
+/// raw column shows zero rows for an empty capture — matching both the live run
+/// (which consumed zero raw lines) and the filtered column produced by
+/// `filter_bytes`. A naive `b"".split(b'\n')` would yield `[""]`, rendering one
+/// phantom blank row the live run never emitted. Keep this guard in lock-step
+/// with `runtime::split_merged_bytes`.
 fn split_lines(bytes: &[u8]) -> Vec<String> {
-    bytes
-        .split(|&b| b == b'\n')
-        .map(|l| String::from_utf8_lossy(l).into_owned())
-        .collect()
+    if bytes.is_empty() {
+        Vec::new()
+    } else {
+        bytes
+            .split(|&b| b == b'\n')
+            .map(|l| String::from_utf8_lossy(l).into_owned())
+            .collect()
+    }
 }
 
 /// Hand-rolled two-column side-by-side (D-06): no LCS/Myers, no diff crate.

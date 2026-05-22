@@ -448,3 +448,104 @@ fn explain_reproduces_real_run_byte_for_byte() {
          explain stdout:\n{explain_stdout}"
     );
 }
+
+/// WR-01 (empty-output round-trip): a captured run that produced NO subprocess
+/// output must replay as ZERO filtered rows in `lacon explain` — not one phantom
+/// blank line.
+///
+/// Trace of the bug this guards: a subprocess that emits nothing leaves
+/// `raw_buffer == []` (zero lines); the live success pipeline consumes
+/// `[].into_iter()` → zero lines. Capture stores `[].join("\n") == ""` as an
+/// empty BLOB. Before the fix, replay split `b""` into `[""]` (ONE blank line),
+/// so `lacon explain` rendered a phantom filtered row the live run never emitted.
+/// After the WR-01 fix (`split_merged_bytes` / `explain::split_lines` empty
+/// guard), the empty capture replays as zero lines, matching the live run.
+///
+/// Drives a REAL `lacon run` with `store_raw_outputs: true` and
+/// `--stdout-lines 0 --errors 0` (NO output), then `lacon explain <id>`, and
+/// asserts the explain filtered column has zero data rows. Hermetic via
+/// `test_emitter`; reuses the `write_rule` (strip_ansi passthrough) helper.
+#[test]
+fn explain_empty_output_replays_as_zero_rows() {
+    let proj = tempdir().unwrap();
+    let xdg = tempdir().unwrap();
+    let emitter = test_emitter_path();
+    let emitter_name = emitter.file_name().unwrap().to_str().unwrap();
+
+    // strip_ansi passthrough rule: on empty input it keeps the output empty, so
+    // the filtered column reflects exactly the (zero) lines the live run emitted.
+    write_rule(proj.path(), "e2e-empty", emitter_name);
+
+    // Opt in: project config enables raw capture.
+    let proj_lacon = proj.path().join(".lacon");
+    std::fs::create_dir_all(&proj_lacon).unwrap();
+    std::fs::write(proj_lacon.join("config.yaml"), "store_raw_outputs: true\n").unwrap();
+
+    // ── 1. Run `lacon run` producing NO output (zero stdout, zero error lines) ──
+    let run = Command::cargo_bin("lacon")
+        .unwrap()
+        .current_dir(proj.path())
+        .env("XDG_DATA_HOME", xdg.path())
+        .env("XDG_CONFIG_HOME", xdg.path().join("config"))
+        .args([
+            "run",
+            "--rule",
+            "e2e-empty",
+            "--",
+            emitter.to_str().unwrap(),
+            "--stdout-lines",
+            "0",
+            "--errors",
+            "0",
+        ])
+        .assert()
+        .success();
+    let run_stdout = String::from_utf8_lossy(&run.get_output().stdout).to_string();
+    assert!(
+        run_stdout.is_empty(),
+        "lacon run emitted no filtered output for an empty subprocess; got: {run_stdout:?}"
+    );
+
+    // ── 2. Capture fired: one raw_outputs row (empty BLOB) + non-NULL fk ──
+    let conn = Connection::open(db_path_under(xdg.path())).unwrap();
+    let raw_rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM raw_outputs", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(raw_rows, 1, "capture fired even for empty output");
+    let (inv_id, raw_output_id): (i64, Option<i64>) = conn
+        .query_row("SELECT id, raw_output_id FROM invocations", [], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+        .unwrap();
+    assert!(
+        raw_output_id.is_some(),
+        "raw_output_id is non-NULL even for an empty capture"
+    );
+
+    // ── 3. `lacon explain <id>`: filtered column must have ZERO data rows ──
+    let explain = Command::cargo_bin("lacon")
+        .unwrap()
+        .current_dir(proj.path())
+        .env("XDG_DATA_HOME", xdg.path())
+        .env("XDG_CONFIG_HOME", xdg.path().join("config"))
+        .args(["explain", &inv_id.to_string()])
+        .assert()
+        .success();
+    let explain_stdout = String::from_utf8_lossy(&explain.get_output().stdout).to_string();
+
+    // Same column-extraction shape as explain_reproduces_real_run_byte_for_byte:
+    // the filtered column is the text after the FIRST " | " on each row, dropping
+    // the "filtered" header + the dash separator.
+    let filtered_column: Vec<String> = explain_stdout
+        .lines()
+        .filter_map(|line| line.split_once(" | "))
+        .map(|(_, right)| right.trim_end().to_owned())
+        .filter(|right| right != "filtered" && !right.chars().all(|c| c == '-'))
+        .collect();
+
+    assert!(
+        filtered_column.is_empty(),
+        "WR-01: empty capture must replay as ZERO filtered rows, not a phantom \
+         blank line; got: {filtered_column:?}\nexplain stdout:\n{explain_stdout}"
+    );
+}

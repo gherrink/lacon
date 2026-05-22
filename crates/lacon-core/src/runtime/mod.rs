@@ -478,11 +478,11 @@ impl Runner {
         let args: Vec<String> = parts.map(|s| s.to_string()).collect();
 
         // Split merged bytes into lines (mirror runtime/mod.rs:265-270 lossy UTF-8;
-        // v1 is a single merged stream per ByteCounts at :60-66).
-        let lines: Vec<String> = merged_bytes
-            .split(|&b| b == b'\n')
-            .map(|l| String::from_utf8_lossy(l).into_owned())
-            .collect();
+        // v1 is a single merged stream per ByteCounts at :60-66). `split_merged_bytes`
+        // is the exact inverse of the capture form `raw_buffer.join("\n")` (D-05),
+        // including the empty-input case (WR-01): empty bytes → ZERO lines, matching
+        // a live run that produced zero raw lines.
+        let lines: Vec<String> = split_merged_bytes(merged_bytes);
 
         // ScriptCtx from STORED values (mirror :327-333, sourced from args).
         let ctx = ScriptCtx {
@@ -567,6 +567,31 @@ impl Runner {
     }
 }
 
+/// Split captured/stored merged bytes into lines, lossily decoding UTF-8.
+///
+/// This is the EXACT inverse of the capture form `raw_buffer.join("\n")` (D-05),
+/// so feeding `split_merged_bytes(raw_buffer.join("\n").into_bytes())` back in
+/// regenerates the original `raw_buffer` line-for-line.
+///
+/// WR-01 (empty-output round-trip): an EMPTY input maps to ZERO lines, NOT a
+/// single empty string. The live runner consumes `[].into_iter()` (zero lines)
+/// when the subprocess emits nothing, and `[].join("\n") == ""` captures as an
+/// empty BLOB. A naive `b"".split(b'\n')` would yield one empty element `[""]`,
+/// so the replay would see ONE (blank) line where the live run saw none — an
+/// extra phantom row in `lacon explain`. Special-casing the empty input keeps
+/// the split a clean inverse of the join for the zero-output case, preserving
+/// the byte-exact reproduction contract documented on `RunOutcome.raw_captured`.
+fn split_merged_bytes(merged_bytes: &[u8]) -> Vec<String> {
+    if merged_bytes.is_empty() {
+        Vec::new()
+    } else {
+        merged_bytes
+            .split(|&b| b == b'\n')
+            .map(|l| String::from_utf8_lossy(l).into_owned())
+            .collect()
+    }
+}
+
 // ─── Signal forwarding (D-12) ─────────────────────────────────────────────────
 //
 // On unix targets: a watcher thread polls SIGTERM and SIGINT via signal-hook's
@@ -642,7 +667,7 @@ mod tests {
     //! lacon-core (test_emitter is a separate workspace member), hence a PATH
     //! command.
 
-    use super::{RunOptions, Runner};
+    use super::{split_merged_bytes, RunOptions, Runner};
     use crate::pipeline::Pipeline;
     use crate::rules::loader::{ResolvedRule, RuleSource};
     use crate::rules::schema::RuleFile;
@@ -709,6 +734,60 @@ mod tests {
             outcome.raw_captured.is_none(),
             "capture_raw=false must leave raw_captured None: {:?}",
             outcome.raw_captured
+        );
+    }
+
+    /// IN-03 / WR-01: lock the round-trip invariant the `RunOutcome.raw_captured`
+    /// doc claims — `raw_buffer.join("\n")` is the exact inverse of the
+    /// `filter_bytes` re-split (`split_merged_bytes`), so capture → store →
+    /// replay regenerates the identical `Vec<String>` the live pipeline consumed.
+    ///
+    /// Parameterized over the cases the prose contract only spot-checks:
+    /// (a) empty buffer (WR-01: zero lines, NOT one blank line),
+    /// (b) a single line,
+    /// (c) a trailing-empty line,
+    /// (d) an invalid-UTF-8 line (lossy-decoded both at capture build and replay),
+    /// (e) a CRLF line.
+    #[test]
+    fn raw_buffer_join_split_round_trips() {
+        // The `\u{FFFD}` is the lossy replacement char: the runtime's live reader
+        // already lossy-decodes (`String::from_utf8_lossy`) before pushing into
+        // `raw_buffer`, so an invalid-UTF-8 *byte sequence* never reaches the
+        // buffer as raw bytes — it arrives already replaced. The round-trip we
+        // assert is therefore over the post-decode `Vec<String>`.
+        let cases: Vec<(&str, Vec<String>)> = vec![
+            ("empty buffer", Vec::new()),
+            ("single line", vec!["only line".to_string()]),
+            (
+                "trailing-empty line",
+                vec!["first".to_string(), String::new()],
+            ),
+            (
+                "lossy-decoded (was invalid utf-8) line",
+                vec!["bad\u{FFFD}byte".to_string(), "next".to_string()],
+            ),
+            (
+                "CRLF line (the \\r is data, not a separator)",
+                vec!["windows\r".to_string(), "unix".to_string()],
+            ),
+        ];
+
+        for (label, raw_buffer) in cases {
+            // Capture form (D-05): join on "\n", into_bytes(), NO trailing newline.
+            let captured = raw_buffer.join("\n").into_bytes();
+            // Replay split (the exact inverse, with the WR-01 empty guard).
+            let replayed = split_merged_bytes(&captured);
+            assert_eq!(
+                replayed, raw_buffer,
+                "round-trip must regenerate the original raw_buffer for case: {label}"
+            );
+        }
+
+        // WR-01 explicitly: an empty capture is ZERO lines, never `[""]`.
+        assert_eq!(
+            split_merged_bytes(b""),
+            Vec::<String>::new(),
+            "empty merged bytes must yield zero lines (WR-01), not one blank line"
         );
     }
 }
