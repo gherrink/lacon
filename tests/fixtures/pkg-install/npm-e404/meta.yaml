@@ -1,0 +1,9 @@
+command: npm install
+exit_code: 1
+tool_version: "npm 11.12.1"
+os: linux
+exempt_from_reduction_check: true
+must_keep_lines:
+  - "npm error code E404"
+  - "404 Not Found"
+notes: "failure (exit 1) routes through on_error; the E404 error block MUST survive. Exempt from the reduction floor — the output IS the signal. Debug-log home path anonymized to ~/."
