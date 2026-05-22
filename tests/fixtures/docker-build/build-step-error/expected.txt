@@ -1,0 +1,15 @@
+
+#6 [3/4] RUN exit 17
+#6 ERROR: process "/bin/sh -c exit 17" did not complete successfully: exit code: 17
+------
+ > [3/4] RUN exit 17:
+------
+Dockerfile.fail:3
+--------------------
+   1 |     FROM alpine:3.20
+   2 |     RUN echo "this works"
+   3 | >>> RUN exit 17
+   4 |     RUN echo "never reached"
+   5 |
+--------------------
+ERROR: failed to build: failed to solve: process "/bin/sh -c exit 17" did not complete successfully: exit code: 17

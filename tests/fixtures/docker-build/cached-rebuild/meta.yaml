@@ -1,0 +1,7 @@
+command: docker build
+exit_code: 0
+tool_version: "Docker 29.5.1 BuildKit"
+captured_at: 2026-05-22
+os: linux
+exempt_from_reduction_check: false
+notes: "DOCKER_BUILDKIT=1; cached rebuild (7-step Dockerfile, all layers CACHED). Volatile sha256/DONE-timing/transferring/exporting lines dropped by the rule; expected.txt is byte-stable."
