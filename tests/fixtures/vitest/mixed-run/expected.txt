@@ -1,0 +1,16 @@
+ FAIL  src/broken.test.js > adds wrong
+AssertionError: expected 4 to be 5 // Object.is equality
+ ✓ src/arr.test.js (4 tests) 3ms
+ ✓ src/bool.test.js (4 tests) 3ms
+ ✓ src/date.test.js (4 tests) 4ms
+ ✓ src/json.test.js (4 tests) 3ms
+ ✓ src/math.test.js (4 tests) 4ms
+ ✓ src/mul.test.js (2 tests) 2ms
+ ✓ src/obj.test.js (4 tests) 4ms
+ ✓ src/regexp.test.js (4 tests) 3ms
+ ✓ src/set.test.js (4 tests) 4ms
+ ✓ src/str.test.js (3 tests) 2ms
+ ✓ src/sum.test.js (3 tests) 3ms
+ ❯ src/broken.test.js (2 tests | 1 failed) 6ms
+ Test Files  1 failed | 11 passed (12)
+      Tests  1 failed | 41 passed (42)

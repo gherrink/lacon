@@ -1,0 +1,17 @@
+command: vitest run
+exit_code: 0
+tool_version: "vitest 4.1.7"
+captured_at: 2026-05-22
+os: linux
+exempt_from_reduction_check: false
+notes: >-
+  Real npx capture (vitest NOT installed in this repo): throwaway node project,
+  `npx -p vitest vitest run --reporter=default` (one-shot, NO --watch). 12 test
+  files / 40 passing tests. Primary success fixture — 11 per-file
+  "✓ ... (N tests) Nms" lines + RUN/Start at/Duration scaffolding drop; the
+  "Test Files"/"Tests" summary survives. Reduction ~0.10 (well under 0.5).
+  Per-file lines sorted for deterministic capture (vitest file ordering is
+  nondeterministic); tmp path anonymized; timings are run-varying but dropped.
+  vitest emits clean (non-ANSI) lines when piped (lacon captures via a pipe);
+  strip_ansi (inherited from bundled/test-base) is still applied first. exit 0
+  -> success pipeline.
