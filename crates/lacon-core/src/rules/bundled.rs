@@ -44,11 +44,17 @@ mod tests {
 
     #[test]
     fn bundled_iter_does_not_panic_on_empty_dir() {
-        // bundled-rules/ only contains .gitkeep in Phase 1; iter should yield 0 items.
-        let count = iter_bundled().count();
-        // Phase 1: expect 0 bundled YAML files (.gitkeep is filtered out).
-        // Phase 5 will add real rules; this test just ensures no panic.
-        assert!(count == 0, "Phase 1 bundled dir contains no .yaml files; got {count}");
+        // Smoke test: `iter_bundled()` must not panic and must filter out non-YAML
+        // artifacts (the `.gitkeep` marker). In Phase 1 the dir held only `.gitkeep`
+        // (count 0); from Phase 5 onward it holds real `<id>.yaml` rules (count > 0).
+        // The invariant under test is "no panic + only .yaml entries", not a fixed
+        // count — so assert every yielded name ends in `.yaml` rather than a brittle
+        // `== 0` that goes red the moment a bundled rule lands.
+        let names: Vec<String> = iter_bundled().collect();
+        assert!(
+            names.iter().all(|n| n.ends_with(".yaml")),
+            "iter_bundled must only yield .yaml files (.gitkeep filtered); got {names:?}"
+        );
     }
 
     #[test]

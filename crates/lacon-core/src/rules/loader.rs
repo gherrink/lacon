@@ -194,7 +194,17 @@ impl RuleLoader {
             match parse_one(&content, &synthetic_path) {
                 Ok(rule) => {
                     let mut visited = HashSet::new();
-                    match flatten_extends_with_lookup(rule, &synthetic_path, &mut visited, &|_, _| None) {
+                    // Bundled rules may extend other bundled rules (D-06; e.g.
+                    // cargo-test extends test-base). The eager load-all path must
+                    // resolve those parents from the bundled set just like the lazy
+                    // `try_resolve_from_bundled` path does (find_in_bundled). With a
+                    // no-op lookup, any bundled rule carrying `extends: bundled/<parent>`
+                    // fails with "could not find parent rule" and poisons load_all for
+                    // EVERY command — which is the path the Claude Code hook uses to
+                    // match an arbitrary command (match_argv_via_load_all).
+                    match flatten_extends_with_lookup(rule, &synthetic_path, &mut visited, &|pid, cpath| {
+                        find_in_bundled(pid, cpath)
+                    }) {
                         Ok(flat) => {
                             match compile_resolved(flat, &synthetic_path, RuleSource::Bundled, self.defaults_max_bytes) {
                                 Ok(r) => rules.push(r),
