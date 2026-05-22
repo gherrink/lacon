@@ -1,0 +1,18 @@
+id: test-base
+description: >-
+  Shared parent for the test-runner rule family (D-06). Provides the genuinely
+  shared stages — strip_ansi on the success path and a context-preserving
+  on_error pipeline (strip_ansi + keep_around_match on failure markers + a tail
+  cap). Children (cargo-test, and later pytest/vitest/jest) extend this and add
+  their tool-specific per-test-PASS drop_regex. This rule is INERT in command
+  resolution: its `match` is a sentinel that no real command produces, so it is
+  only ever reached via `extends`, never matched directly.
+match:
+  command_regex: '^__lacon_test_base_never_matches__$'
+pipeline:
+  - strip_ansi
+on_error:
+  pipeline:
+    - strip_ansi
+    - keep_around_match: { pattern: '(?i)(FAILED|panicked|error|assertion)', before: 1, after: 6 }
+    - keep_tail: { lines: 60 }
