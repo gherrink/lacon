@@ -1,0 +1,20 @@
+id: tsc
+description: tsc / tsc --noEmit
+# D-10: match concrete tsc invocations (bare `tsc` and `tsc --noEmit`).
+match:
+  any:
+    - { command: tsc, args_prefix: [] }
+    - { command: tsc, args_prefix: ['--noEmit'] }
+# RESEARCH Pattern 3 — the output IS the signal. tsc emits NOTHING on clean
+# success; on failure every `error TSxxxx` line is unique. Reduction comes only
+# from ANSI strip + collapsing accidental duplicates + a tail cap, NOT from
+# dropping signal lines. NO max_bytes (D-07; loader auto-injects the cap).
+pipeline:
+  - strip_ansi
+  - dedupe: { max_kept: 1 }
+  - keep_tail: { lines: 100 }
+on_error:
+  pipeline:
+    - strip_ansi
+    - dedupe: { max_kept: 1 }
+    - keep_tail: { lines: 100 }

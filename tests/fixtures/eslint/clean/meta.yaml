@@ -1,0 +1,12 @@
+command: eslint .
+exit_code: 0
+tool_version: "eslint 10.4.0"
+captured_at: 2026-05-22
+os: linux
+exempt_from_reduction_check: true
+notes: >-
+  eslint emits nothing on a clean run (exit 0, zero output). Captured via
+  `NO_COLOR=1 npx -p eslint eslint .` against a violation-free .js file.
+  input.txt is empty; the success pipeline produces empty output. Exempt from the
+  reduction check because there is no input to reduce — this fixture documents the
+  zero-output clean path.

@@ -1,0 +1,17 @@
+id: eslint
+description: eslint
+match:
+  command: eslint
+# eslint "stylish" formatter emits a file-path header line followed by indented
+# `line:col error/warning rule` detail lines. keep_around_match on each detail
+# line (before:1) preserves the file-path header above it (RESEARCH section 8).
+# strip_ansi MUST come first (stylish colorizes) — Pitfall 1. NO look-around in
+# the pattern (RE2). NO max_bytes (D-07; loader auto-injects the cap).
+pipeline:
+  - strip_ansi
+  - keep_around_match: { pattern: ' (error|warning) ', before: 1, after: 0 }
+on_error:
+  pipeline:
+    - strip_ansi
+    - keep_around_match: { pattern: ' (error|warning) ', before: 1, after: 0 }
+    - keep_tail: { lines: 60 }

@@ -1,0 +1,17 @@
+command: tsc --noEmit
+exit_code: 2
+tool_version: "typescript 6.0.3"
+captured_at: 2026-05-22
+os: linux
+exempt_from_reduction_check: true
+must_keep_lines:
+  - "error TS"
+notes: >-
+  PRIMARY fixture. tsc is NOT installed locally — captured via
+  `npx -p typescript tsc --noEmit --pretty false` in a throwaway node project
+  with deliberate type errors. `--pretty false` yields the stable one-line
+  `file(line,col): error TSxxxx:` form (no ANSI). Exit 2 is the actual observed
+  code (tsc returns 2 on type errors). Reduction is exempt because tsc output IS
+  the signal — every `error TSxxxx` line is unique, so dedupe/keep_tail drop
+  nothing; the ≥50% floor is structurally unachievable. Error survival is proven
+  via must_keep_lines instead.
