@@ -1,0 +1,39 @@
+id: vitest
+description: vitest / vitest run
+# vitest default reporter is heavily colorized — strip_ansi is MANDATORY and is
+# prepended by the parent (bundled/test-base) per ADR-0012, so it runs before any
+# regex stage here (Pitfall 1). On success drop the per-file PASS lines and the
+# timing scaffolding, keeping the "Test Files"/"Tests" summary. The ✓/❯/×/→ are
+# multibyte glyphs, so the per-file PASS drop matches the surrounding ASCII shape
+# "(N tests) Nms" anchored to end-of-line — the failing-file line carries
+# "| 1 failed)" and is therefore NOT dropped (D-10 / RESEARCH A1). NO look-around
+# (RE2). NO max_bytes (D-07; loader auto-injects the cap).
+extends: bundled/test-base
+match:
+  any:
+    - command: vitest
+    - command: vitest
+      args_prefix: [run]
+pipeline:
+  # strip_ansi is prepended by the parent (bundled/test-base) per ADR-0012.
+  # Per-file PASS line, e.g. " ✓ src/sum.test.ts (3 tests) 4ms" — match the ASCII
+  # "(N tests) Nms" tail; the failing-file line ("| 1 failed)") does not match.
+  - drop_regex: '\(\d+ tests?\) \d+\s*ms$'
+  # Timing / scaffolding lines.
+  - drop_regex: '^\s*Duration\b'
+  - drop_regex: '^\s*Start at\b'
+  - drop_regex: '^\s*Transform\b'
+  - drop_regex: '^\s*Setup\b'
+  - drop_regex: '^\s*Collect\b'
+  - drop_regex: '^\s*Environment\b'
+  - drop_regex: '^\s*Prepare\b'
+  - drop_regex: '^\s*RUN\b'
+on_error:
+  pipeline:
+    - strip_ansi
+    # Keep the failing-file / failing-test / failure-detail lines plus the
+    # Test Files / Tests summary. The glyph lines are matched via their ASCII
+    # context ("failed", "(N tests", "Test Files", "Tests"); "→" expectation
+    # detail and "FAIL" markers also survive.
+    - keep_regex: '(failed|FAIL|\(\d+ tests?|^\s*Test Files |^\s*Tests |expected |to be |to equal )'
+    - keep_tail: { lines: 80 }
