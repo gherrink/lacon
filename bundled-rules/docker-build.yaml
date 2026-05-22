@@ -1,0 +1,29 @@
+id: docker-build
+description: docker build / docker buildx build
+match:
+  any:
+    - { command: docker, args_prefix: [build] }
+    - { command: docker, args_prefix: [buildx, build] }
+pipeline:
+  - strip_ansi
+  # BuildKit progress noise. The sha256/DONE-timing/transferring lines carry
+  # run-varying byte counts and durations (RESEARCH Pitfall 6) — dropping them
+  # is what makes expected.txt deterministic. Keep `#N [k/m] ...` step headers
+  # and `#N <secs> ...` RUN echo output (the actual signal).
+  - drop_regex: '^#\d+ CACHED$'
+  - drop_regex: '^#\d+ DONE \d'
+  - drop_regex: '^#\d+ sha256:'
+  - drop_regex: '^#\d+ transferring '
+  - drop_regex: '^#\d+ extracting '
+  - drop_regex: '^#\d+ resolve '
+  - drop_regex: '^#0 building with'
+  - drop_regex: '^#\d+ exporting '
+  # NO max_bytes — auto-injected at 32768 (D-07)
+on_error:
+  pipeline:
+    - strip_ansi
+    # Capture the framed ERROR block: `#N ERROR:`, the `------` frame, the
+    # `> [k/m] ...` step pointer, the `--------------------` Dockerfile excerpt
+    # with `>>>`, and the final `ERROR: failed to build`.
+    - keep_around_match: { pattern: 'ERROR', before: 2, after: 15 }
+    - keep_tail: { lines: 40 }
