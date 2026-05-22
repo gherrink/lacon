@@ -1,0 +1,70 @@
+# lacon CI — hermetic, two-OS-lane build/test/bench (D-08/D-09).
+#
+# HERMETICITY CONTRACT (do NOT break in future edits):
+#   - NO toolchain installs: each lane uses the runner's PRE-INSTALLED Rust.
+#     Do not add any package-manager fetch step (Homebrew, npm/pnpm, pip, or
+#     apt) for pnpm, vitest, cargo-tools, or system libsqlite3.
+#     `rusqlite[bundled]` vendors SQLite, so there is no system-library
+#     temptation.
+#   - The test step deliberately runs the DEFAULT (non-ignored) test set so CI
+#     never runs the interactive signal test or the real-pnpm test (both gated
+#     out via Rust's #[ignore] attribute). Including the ignored tests would
+#     both break hermeticity (npm registry / supply chain) and make the gate
+#     flaky.
+#   - Only `actions/checkout@v4` is used (pinned). Any third-party action added
+#     later MUST have its slug verified and be pinned to a tag or full SHA.
+#   - The workflow needs no repository secrets and references none.
+#
+# GATES:
+#   - `cargo bench -p lacon-core --bench tracker_open` is the DETERMINISTIC hard
+#     gate (in-process steady-state Tracker::open budget). It runs on BOTH lanes.
+#   - `scripts/bench-cold-start.sh` produces the wall-clock cold-start numbers.
+#     On macOS this is the only way to get SC1's macOS number; it is a SOFT
+#     report (min-of-N), NOT a build-breaking wall-clock assert (a shared macOS
+#     VM is too noisy for that).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least-privilege default token — read-only, no secrets needed.
+permissions:
+  contents: read
+
+jobs:
+  build-test-bench:
+    name: build · test · bench (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Toolchain info (pre-installed Rust, no install step)
+        run: |
+          rustc --version
+          cargo --version
+
+      - name: Build (release)
+        run: cargo build --release
+
+      # Hermetic test sweep: runs only the default (non-ignored) test set,
+      # keeping the interactive signal test and the real-pnpm test out of CI
+      # (Pitfall 3 / supply chain).
+      - name: Test (workspace, hermetic default set)
+        run: cargo test --workspace
+
+      # Deterministic hard gate: in-process steady-state Tracker::open budget.
+      - name: Cold-start hard gate (tracker_open criterion bench)
+        run: cargo bench -p lacon-core --bench tracker_open
+
+      # Soft-reported wall-clock cold start. On macOS this generates SC1's
+      # macOS number the Linux dev box cannot. Reported, not hard-asserted.
+      - name: Cold-start probe (soft-reported min-of-N)
+        run: ./scripts/bench-cold-start.sh
