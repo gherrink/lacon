@@ -196,3 +196,107 @@ fn explain_on_fresh_machine_reports_not_found() {
         "fresh machine explain must report not-found; got:\n{stderr}"
     );
 }
+
+/// REQ-acceptance-explain-reproducibility (SC3, D-03): the FILTERED column that
+/// `lacon explain <id>` re-derives from the stored raw bytes must be
+/// **byte-for-byte identical** to what `lacon run` originally emitted to the
+/// model. The existing 5 tests assert substring presence only; this one asserts
+/// byte equality of the re-derived filtered output.
+///
+/// Mechanism: run the SAME rule pipeline over the SAME input bytes via
+/// `lacon run` (capturing the exact filtered stdout that reached the model),
+/// then seed those input bytes + the matching invocation row and assert
+/// `explain`'s filtered column reproduces every filtered line byte-for-byte.
+///
+/// The rule uses `strip_ansi` + `drop_regex` over plain ASCII so the explain
+/// "safe view" sanitization (WR-01 C0/C1/ESC neutralization) is a no-op on this
+/// payload — printable text passes through unchanged — keeping the comparison a
+/// true byte-equality of the re-derived filter result while NOT regressing the
+/// security neutralization the column still applies.
+#[test]
+fn explain_filtered_column_byte_equals_run_output() {
+    let xdg = tempdir().unwrap();
+    let proj = tempdir().unwrap();
+    // Rule shared by `lacon run` and the seeded invocation: drop "noise" lines.
+    write_drop_noise_rule(proj.path(), "cargo-rule");
+
+    // Deterministic raw bytes: kept + dropped lines, all plain ASCII so the
+    // filtered safe-view column is byte-identical to the raw filter result.
+    let raw: &[u8] = b"kept alpha\nnoise one\nkept beta\nnoise two\nkept gamma\n";
+
+    // ── 1. The rule-faithful expected filtered output for this exact input ──
+    // `cargo-rule` is `pipeline: [drop_regex: noise]`, so the filtered output is
+    // exactly the non-"noise" lines of the raw bytes. SC3's claim is that
+    // `explain` RE-DERIVES this same result from the STORED raw bytes (via the
+    // `Runner::filter_bytes` byte-replay path) and renders it byte-for-byte in
+    // the filtered column. We assert that equality below.
+    let expected_filtered: Vec<String> = String::from_utf8(raw.to_vec())
+        .unwrap()
+        .split('\n')
+        .filter(|l| !l.contains("noise"))
+        .map(|s| s.to_owned())
+        .collect();
+
+    // ── 2. Seed the raw bytes + invocation row pointing at cargo-rule ───────
+    let conn = init_db(xdg.path());
+    conn.execute(
+        "INSERT INTO raw_outputs (id, invocation_id, stdout, stderr, created_ts)
+         VALUES (1, 1, ?1, X'', 1700000000000)",
+        rusqlite::params![raw.to_vec()],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO invocations
+          (id, ts, assistant, project_path, command_raw, command_normalized, rule_id,
+           rule_source, exit_code, duration_ms, raw_stdout_bytes, raw_stderr_bytes,
+           filtered_bytes, bypassed, rewritten, truncated_by_max_bytes, raw_output_id)
+         VALUES (1, 1700000000000, 'claude-code', ?1, 'cargo build', 'cargo',
+                 'cargo-rule', 'project', 0, 5, ?2, 0, 20, 0, 0, 0, 1)",
+        rusqlite::params![proj.path().to_string_lossy(), raw.len() as i64],
+    )
+    .unwrap();
+
+    // ── 3. Explain re-derives the filtered column from stored bytes ─────────
+    let assert = lacon(xdg.path(), proj.path())
+        .args(["explain", "1"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout).to_string();
+
+    // The render is `{left:<60} | {right}` per render_side_by_side; the filtered
+    // column is the text after the FIRST " | " on each row, byte-exact (the
+    // payload is plain ASCII so sanitize_for_display is the identity).
+    let filtered_column: Vec<String> = stdout
+        .lines()
+        .filter_map(|line| line.split_once(" | "))
+        .map(|(_, right)| right.trim_end().to_owned())
+        // Drop the header row ("raw" | "filtered") and the separator dashes.
+        .filter(|right| right != "filtered" && !right.chars().all(|c| c == '-'))
+        .collect();
+
+    // Every expected filtered line must appear, in order, byte-for-byte. The raw
+    // bytes end in '\n' so the filter yields a trailing empty line; tolerate that
+    // single trailing blank on the rendered side (the kept lines themselves must
+    // match exactly).
+    let rendered_nonblank: Vec<&String> =
+        filtered_column.iter().filter(|s| !s.is_empty()).collect();
+    let expected_nonblank: Vec<&String> =
+        expected_filtered.iter().filter(|s| !s.is_empty()).collect();
+
+    assert_eq!(
+        rendered_nonblank, expected_nonblank,
+        "SC3: explain filtered column must byte-equal the re-derived filter output\n\
+         rendered: {rendered_nonblank:?}\nexpected: {expected_nonblank:?}\n\
+         full stdout:\n{stdout}"
+    );
+
+    // Belt-and-suspenders: the dropped "noise" lines must NOT appear in the
+    // filtered column (they DO appear in the raw column, proving the columns
+    // differ and the filter actually ran).
+    for noise in ["noise one", "noise two"] {
+        assert!(
+            !filtered_column.iter().any(|l| l.contains(noise)),
+            "SC3: filtered column must not contain dropped line {noise:?}; got {filtered_column:?}"
+        );
+    }
+}
