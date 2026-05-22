@@ -121,3 +121,9 @@ None. (No hardcoded empty values or placeholder data wired to UI/output were int
 ## Threat Flags
 
 None. The CI workflow stays inside the plan's `<threat_model>`: only `actions/checkout@v4` (pinned), no third-party actions, no `secrets.*`, least-privilege `permissions`, no package-manager fetch steps (T-06-CI-01/02/SC mitigations satisfied). The cold-start macOS number is soft-reported, not hard-asserted (T-06-CI-03 accepted-by-design).
+
+## Self-Check: PASSED
+
+- All 6 created/modified files exist on disk (bench, script, ci.yml, architecture.md, deferred-items.md, SUMMARY.md).
+- All 4 commits present in git log: `2f12388` (Task 1), `b010b1b` (Task 2), `c32f479` (Task 3), `f6c9224` (SUMMARY).
+- Working tree clean.
