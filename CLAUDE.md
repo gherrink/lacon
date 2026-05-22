@@ -4,9 +4,58 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-**Design phase. No code yet.** There is no `Cargo.toml`, no source tree, no build, lint, or test commands. The repository contains only the README, LICENSE, and `docs/`. Do not invent build commands or pretend a tool chain exists — when implementation starts, the planned crate layout is in `docs/architecture.md` (`crates/lacon-core`, `crates/lacon-cli`, `crates/lacon-adapter-claudecode`, `bundled-rules/`, `tests/`).
+**v1.0 is code-complete.** The Rust workspace ships across six phases (engine, SQLite tracking, Claude Code adapter, CLI, ten bundled rules, ship gate). The design is locked down by 13 ADRs in `docs/decisions/`. Treat those ADRs as the source of truth — if a proposed change contradicts one, surface that explicitly rather than silently working around it.
 
-The design is intentionally locked down ahead of implementation via 13 ADRs in `docs/decisions/`. Treat those ADRs as the source of truth — if a proposed change contradicts one, surface that explicitly rather than silently working around it.
+## Workspace layout
+
+A Cargo workspace (`resolver = "2"`, stable toolchain pinned in `rust-toolchain.toml`) with these members:
+
+- **`crates/lacon-core`** — the assistant-agnostic engine (library). `pipeline/` (streaming line primitives + `max_bytes` cap), `rules/` (loader with mtime cache, YAML `schema`, `bundled` rust-embed, `rewrite` flag add/remove, `extends` flatten), `runtime/` (subprocess spawn, stderr→stdout merge, POSIX signal forwarding, `on_error` mode switch), `starlark_host/` (the aggregated `post_process` stage), `tracking/` (SQLite WAL: migrations, prune, privacy, normalize, query, health), `config/`, `validate/`.
+- **`crates/lacon-cli`** — the `lacon` binary. One module per subcommand under `commands/` (`init`, `run`, `stats`, `explain`, `doctor`, `validate`).
+- **`crates/lacon-adapter-claudecode`** — the `lacon-claude-hook` binary + library. `protocol.rs` (PreToolUse JSON), `chain.rs` (`&&`/`||`/`;` splitting), `tui.rs` (interactive-bypass heuristic), `quote.rs`.
+- **`bin/test_emitter`** — a test-only stub binary that parametrically reproduces tool output, replacing real tools (cargo, pnpm, etc.) in hermetic tests.
+- **`benches/`** — the `cold_start_probe` wall-clock harness (`cold_start.rs`). The deterministic hard gate lives separately at `crates/lacon-core/benches/tracker_open.rs` (criterion; panics if `Tracker::open` median > 3700µs).
+- **`bundled-rules/`** — the ten shipped Tier-1 rules (YAML), embedded into `lacon-core` at build time. **`tests/fixtures/`** — input/expected/meta triples driving fixture tests.
+
+## Build, test, and lint
+
+```sh
+cargo build --release        # produces target/release/{lacon, lacon-claude-hook}
+cargo test --workspace       # default (non-ignored) suite — what CI gates on
+cargo clippy --workspace --all-targets
+cargo fmt                    # rustfmt + clippy components are in the pinned toolchain
+```
+
+**Before running the test suite from a fresh checkout, build the workspace in debug first:**
+
+```sh
+cargo build --workspace && cargo test --workspace
+```
+
+This is non-obvious and load-bearing: the `lacon-cli` integration tests resolve cross-package helper binaries (`test_emitter`, `lacon-claude-hook`) via `assert_cmd`'s `cargo_bin`, which falls back to `target/debug/<name>`. `cargo test` builds only the test harnesses, not the top-level debug bins, so a bare `cargo test` on a clean tree panics on unresolved binaries. CI runs the debug build explicitly before the test sweep (`.github/workflows/ci.yml`).
+
+Running a subset:
+
+```sh
+cargo test -p lacon-core --test primitives          # one integration-test file
+cargo test -p lacon-core dedupe                      # tests matching a substring
+```
+
+**Ignored tests** are excluded from the default set (and CI) on purpose — the `#[ignore]` string is the runbook line:
+
+```sh
+cargo test --test runtime_signal -- --include-ignored          # sends real SIGTERM
+cargo test -p lacon-cli --test pnpm_e2e -- --ignored           # runs a real pnpm install (not hermetic)
+```
+
+**Benchmarks / cold-start gates:**
+
+```sh
+cargo bench -p lacon-core --bench tracker_open   # deterministic HARD gate
+./scripts/bench-cold-start.sh                    # SOFT-reported wall-clock min-of-N
+```
+
+CI (`.github/workflows/ci.yml`) is **hermetic by contract** — two OS lanes (ubuntu + macos) using each runner's pre-installed Rust, no toolchain/package-manager installs, no secrets. Do not add fetch steps (Homebrew, npm/pnpm, pip, apt); `rusqlite[bundled]` vendors SQLite so there is no system-library temptation.
 
 ## What `lacon` is
 
