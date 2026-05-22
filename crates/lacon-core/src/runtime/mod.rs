@@ -52,6 +52,13 @@ pub struct RunOptions {
     /// Additional environment variables injected into the subprocess environment.
     /// Used primarily for testing; PLAN-06 does not populate it in production.
     pub extra_env: HashMap<String, String>,
+    /// When `true`, `Runner::run` serializes the buffered raw (pre-filter) lines
+    /// into `RunOutcome.raw_captured` so the caller can persist them to the
+    /// `raw_outputs` table (Phase 7, D-02). Defaults to `false` via
+    /// `#[derive(Default)]`, so every existing call site stays capture-OFF and
+    /// the cold-start hot path pays ZERO extra cost (D-03): the join-to-bytes
+    /// serialization runs ONLY when this flag is set.
+    pub capture_raw: bool,
 }
 
 /// Byte counts for a single `Runner::run` invocation.
@@ -82,6 +89,15 @@ pub struct RunOutcome {
     pub truncated: bool,
     /// Wall-clock duration of the entire `run()` call in milliseconds.
     pub duration_ms: u64,
+    /// Captured raw (pre-filter) bytes, present ONLY when `RunOptions.capture_raw`
+    /// was `true` for this run (Phase 7, D-01). The canonical capture form is
+    /// `raw_buffer.join("\n")` with NO re-added trailing newline (D-05) — the
+    /// exact inverse of the per-line build (lossy decode + strip one trailing
+    /// `\n`), so `Runner::filter_bytes`' re-split regenerates the identical
+    /// `Vec<String>` the live pipeline consumed (byte-exact `lacon explain`
+    /// reproduction). `None` on the default-off hot path, on bypass, and for
+    /// unmatched runs.
+    pub raw_captured: Option<Vec<u8>>,
 }
 
 /// Tracker metadata assembled by `lacon-cli::commands::run` after `Runner::run`
@@ -181,14 +197,14 @@ impl Runner {
         // The CRITICAL pitfall: Command holds internal writer copies. We must
         // drop the Command value BEFORE reading from the pipe reader, or the
         // read-end never sees EOF and deadlocks forever.
-        let (reader, writer) =
-            pipe().map_err(|e| RuntimeError::IoError { source: e })?;
-        let writer_clone =
-            writer.try_clone().map_err(|e| RuntimeError::IoError { source: e })?;
+        let (reader, writer) = pipe().map_err(|e| RuntimeError::IoError { source: e })?;
+        let writer_clone = writer
+            .try_clone()
+            .map_err(|e| RuntimeError::IoError { source: e })?;
 
         let mut cmd = std::process::Command::new(&argv[0]);
         cmd.args(&argv[1..])
-            .stdout(writer)   // os_pipe::PipeWriter implements Into<Stdio>
+            .stdout(writer) // os_pipe::PipeWriter implements Into<Stdio>
             .stderr(writer_clone);
         if let Some(p) = &self.options.project_path {
             cmd.current_dir(p);
@@ -329,7 +345,32 @@ impl Runner {
             duration_ms: started.elapsed().as_millis() as u64,
             command: argv[0].clone(),
             args: argv[1..].to_vec(),
-            project_path: self.options.project_path.as_ref().map(|p| p.display().to_string()),
+            project_path: self
+                .options
+                .project_path
+                .as_ref()
+                .map(|p| p.display().to_string()),
+        };
+
+        // ─── Gated raw capture (Phase 7, D-01/D-03/D-05) ──────────────────
+        //
+        // Serialize the buffered raw lines into bytes ONLY when capture was
+        // requested. This MUST happen BEFORE `raw_buffer` is moved into the
+        // pipeline at the exit-code branch below (`.into_iter()` / move-out).
+        //
+        // The default-off hot path (capture_raw == false) pays ZERO extra cost
+        // (D-03): the join-to-bytes is computed strictly inside the `true` arm,
+        // and `raw_buffer` is consumed by the pipeline exactly as before.
+        //
+        // The capture form is `raw_buffer.join("\n")` with NO trailing newline
+        // re-added (D-05) — the exact inverse of the per-line build at the
+        // reader (lossy decode + strip one trailing `\n`), so
+        // `Runner::filter_bytes`' re-split regenerates the identical lines for
+        // byte-exact `lacon explain` reproduction.
+        let raw_captured: Option<Vec<u8>> = if self.options.capture_raw {
+            Some(raw_buffer.join("\n").into_bytes())
+        } else {
+            None
         };
 
         // ─── Exit code branch (D-13, ADR-0010) ───────────────────────────
@@ -386,6 +427,7 @@ impl Runner {
             bypassed: false,
             truncated,
             duration_ms: started.elapsed().as_millis() as u64,
+            raw_captured,
         })
     }
 
@@ -520,6 +562,7 @@ impl Runner {
             bypassed: true,
             truncated: false,
             duration_ms: started.elapsed().as_millis() as u64,
+            raw_captured: None, // bypass captures nothing (D-01)
         })
     }
 }
@@ -545,8 +588,7 @@ fn install_signal_forwarder(child_pid: i32) -> (thread::JoinHandle<()>, Arc<Atom
     let stop_flag = Arc::new(AtomicBool::new(false));
     let stop_flag_thread = stop_flag.clone();
 
-    let mut signals =
-        Signals::new([SIGTERM, SIGINT]).expect("signal-hook Signals::new failed");
+    let mut signals = Signals::new([SIGTERM, SIGINT]).expect("signal-hook Signals::new failed");
 
     let handle = thread::spawn(move || {
         loop {
@@ -581,4 +623,92 @@ fn install_signal_forwarder(_child_pid: i32) -> (thread::JoinHandle<()>, Arc<Ato
     let stop = Arc::new(AtomicBool::new(false));
     let h = thread::spawn(|| {});
     (h, stop)
+}
+
+#[cfg(test)]
+mod tests {
+    //! Phase 7 D-10: guard the Some/None shape of the gated raw-capture field.
+    //!
+    //! A `Runner` built with `RunOptions { capture_raw: true, .. }` MUST yield
+    //! `RunOutcome.raw_captured == Some(..)`; with `capture_raw: false` it MUST
+    //! yield `None`. Asserting only the SHAPE here (not byte content — that is the
+    //! E2E test's job in `tracking_e2e.rs`) means a future edit that silently
+    //! drops the capture wiring fails this fast, hermetic unit test.
+    //!
+    //! The Runner is built over a hand-assembled `ResolvedRule` mirroring the
+    //! pattern in `crates/lacon-core/tests/runtime_filter_bytes.rs::make_rule`,
+    //! driven against `printf` (POSIX-available on macOS + Linux, the only v1
+    //! platforms). `env!("CARGO_BIN_EXE_test_emitter")` is NOT available inside
+    //! lacon-core (test_emitter is a separate workspace member), hence a PATH
+    //! command.
+
+    use super::{RunOptions, Runner};
+    use crate::pipeline::Pipeline;
+    use crate::rules::loader::{ResolvedRule, RuleSource};
+    use crate::rules::schema::RuleFile;
+
+    fn make_passthrough_rule() -> ResolvedRule {
+        ResolvedRule {
+            id: "capture-test".into(),
+            source: RuleSource::Project,
+            rule: RuleFile {
+                id: "capture-test".into(),
+                description: None,
+                extends: None,
+                match_spec: None,
+                bypass_when: None,
+                rewrite: None,
+                pipeline: None,
+                on_error: None,
+                post_process: None,
+            },
+            // An empty success pipeline is a no-op passthrough — sufficient for a
+            // shape-only assertion on the capture field.
+            success_pipeline: Pipeline::new(vec![]),
+            on_error_pipeline: None,
+            post_process: None,
+            on_error_post_process: None,
+        }
+    }
+
+    fn printf_argv() -> Vec<String> {
+        // Deterministic two-line output: "a\nb\n".
+        vec!["printf".into(), "a\\nb\\n".into()]
+    }
+
+    #[test]
+    fn capture_raw_true_yields_some() {
+        let options = RunOptions {
+            capture_raw: true,
+            ..Default::default()
+        };
+        let mut runner = Runner::new(make_passthrough_rule(), options);
+        let mut sink: Vec<u8> = Vec::new();
+        let outcome = runner
+            .run(&printf_argv(), &mut sink)
+            .expect("runner.run with capture_raw=true");
+        assert!(
+            outcome.raw_captured.is_some(),
+            "capture_raw=true must populate raw_captured: {:?}",
+            outcome.raw_captured
+        );
+    }
+
+    #[test]
+    fn capture_raw_false_yields_none() {
+        let options = RunOptions {
+            capture_raw: false,
+            ..Default::default()
+        };
+        let mut runner = Runner::new(make_passthrough_rule(), options);
+        let mut sink: Vec<u8> = Vec::new();
+        let outcome = runner
+            .run(&printf_argv(), &mut sink)
+            .expect("runner.run with capture_raw=false");
+        assert!(
+            outcome.raw_captured.is_none(),
+            "capture_raw=false must leave raw_captured None: {:?}",
+            outcome.raw_captured
+        );
+    }
 }

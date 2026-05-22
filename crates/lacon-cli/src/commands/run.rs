@@ -70,6 +70,9 @@ fn run_with_rule<W: Write>(
     let options = RunOptions {
         project_path,
         extra_env: Default::default(),
+        // Capture is wired to the resolved store_raw_outputs decision in Task 2;
+        // default-off here keeps the field present so the workspace compiles.
+        capture_raw: false,
     };
     let mut runner = Runner::new(resolved, options);
     match runner.run(&argv, sink) {
@@ -106,10 +109,7 @@ fn run_unmatched<W: Write>(argv: Vec<String>, _sink: &mut W) -> anyhow::Result<i
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .status();
-    let duration_ms = started
-        .elapsed()
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
+    let duration_ms = started.elapsed().map(|d| d.as_millis() as u64).unwrap_or(0);
     match status {
         Ok(s) => {
             let exit_code = s.code().unwrap_or_else(|| {
@@ -130,6 +130,7 @@ fn run_unmatched<W: Write>(argv: Vec<String>, _sink: &mut W) -> anyhow::Result<i
                 bypassed: false,
                 truncated: false,
                 duration_ms,
+                raw_captured: None, // unmatched runs capture nothing (D-01)
             };
             let project_path = std::env::current_dir().ok();
             record_invocation(None, None, argv, project_path, outcome);
@@ -168,8 +169,7 @@ fn record_invocation(
         }
     };
 
-    let assistant = std::env::var("LACON_ASSISTANT")
-        .unwrap_or_else(|_| "claude-code".to_owned());
+    let assistant = std::env::var("LACON_ASSISTANT").unwrap_or_else(|_| "claude-code".to_owned());
     let session_id = std::env::var("LACON_SESSION_ID").ok();
     let command_raw = argv.join(" ");
     let command_normalized = tracking::normalize(&argv);
@@ -207,11 +207,8 @@ fn record_invocation(
     let cfg: Config = if project_config_path.is_none() && user_config_path.is_none() {
         Config::default()
     } else {
-        config::load_layered(
-            project_config_path.as_deref(),
-            user_config_path.as_deref(),
-        )
-        .unwrap_or_else(|_| Config::default())
+        config::load_layered(project_config_path.as_deref(), user_config_path.as_deref())
+            .unwrap_or_else(|_| Config::default())
     };
     // ──────────────────────────────────────────────────────────────────────
 
@@ -244,28 +241,22 @@ fn record_invocation(
         }
     };
 
-    let tracker = match tracking::Tracker::open(
-        &db_path,
-        &cfg.retention,
-        cfg.store_raw_outputs,
-        now_ms,
-    ) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("lacon: tracker open failed: {e}");
-            return;
-        }
-    };
+    let tracker =
+        match tracking::Tracker::open(&db_path, &cfg.retention, cfg.store_raw_outputs, now_ms) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("lacon: tracker open failed: {e}");
+                return;
+            }
+        };
 
     // Per-layer split for resolve_marker_path: Phase 1's load_layered collapses
     // project + user into a single bool, so we can't perfectly distinguish.
     // For v1, when cfg.store_raw_outputs is true AND a project config file
     // exists, treat it as project-layer ON; otherwise user-layer ON.
     // privacy::resolve_marker_path then routes to the right layer's marker path.
-    let project_store_raw =
-        cfg.store_raw_outputs && project_config_path.is_some();
-    let user_store_raw =
-        cfg.store_raw_outputs && !project_store_raw;
+    let project_store_raw = cfg.store_raw_outputs && project_config_path.is_some();
+    let user_store_raw = cfg.store_raw_outputs && !project_store_raw;
 
     let project_root = project_path.as_deref();
     let user_dir_ref = user_config_dir.as_deref();

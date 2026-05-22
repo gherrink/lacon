@@ -125,7 +125,10 @@ pub fn execute(id: String) -> anyhow::Result<i32> {
             };
             let options = RunOptions {
                 project_path: project_path_buf,
-                extra_env: Default::default(),
+                // Replaying STORED bytes never re-captures (capture_raw stays
+                // false): explain feeds previously-saved bytes through the
+                // pipeline, it does not spawn a fresh subprocess.
+                ..Default::default()
             };
             let mut runner = Runner::new(resolved, options);
             // WR-04: the stored columns are i64 (`INTEGER`); guard the casts so a
@@ -173,9 +176,7 @@ pub fn execute(id: String) -> anyhow::Result<i32> {
 /// unchanged, so the zero-vs-nonzero branch selection is preserved exactly.
 fn exit_code_from_stored(stored: i64) -> i32 {
     i32::try_from(stored).unwrap_or_else(|_| {
-        eprintln!(
-            "lacon explain: stored exit_code {stored} is out of range; treating as failure"
-        );
+        eprintln!("lacon explain: stored exit_code {stored} is out of range; treating as failure");
         1
     })
 }
