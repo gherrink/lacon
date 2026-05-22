@@ -23,6 +23,9 @@ pipeline:
   - drop_regex: '^\++$'
   - drop_regex: '^\[[0-9]/4\] '
   - drop_regex: '^info '
+  # WR-04 tradeoff: this also drops yarn-classic `warning <pkg> has unmet peer
+  # dependency` / deprecation lines on the SUCCESS path (reduction is the goal here).
+  # Install ERRORS are on the failure path and preserved by on_error, never here.
   - drop_regex: '^warning '
   - drop_regex: '^success '
   - drop_regex: '^\d+ packages are looking for funding'
@@ -35,4 +38,6 @@ on_error:
   pipeline:
     - strip_ansi
     - keep_around_match: { pattern: '(?i)(error|ERR_|fatal)', before: 1, after: 10 }
-    - keep_tail: { lines: 40 }
+    # keep_head (not keep_tail): the first install error (e.g. E404) is the root
+    # cause; cap from the top so it survives if errors overflow the cap (WR-01).
+    - keep_head: { lines: 40 }

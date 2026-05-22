@@ -26,4 +26,7 @@ on_error:
     # `> [k/m] ...` step pointer, the `--------------------` Dockerfile excerpt
     # with `>>>`, and the final `ERROR: failed to build`.
     - keep_around_match: { pattern: 'ERROR', before: 2, after: 15 }
-    - keep_tail: { lines: 40 }
+    # keep_head (not keep_tail): the first ERROR is the failing step's root cause;
+    # cap from the top so it survives if the error frame overflows the cap (WR-01).
+    # No-op when output <= 40 lines.
+    - keep_head: { lines: 40 }

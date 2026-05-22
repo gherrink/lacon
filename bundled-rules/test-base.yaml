@@ -4,9 +4,10 @@ description: >-
   shared stages — strip_ansi on the success path and a context-preserving
   on_error pipeline (strip_ansi + keep_around_match on failure markers + a tail
   cap). Children (cargo-test, and later pytest/vitest/jest) extend this and add
-  their tool-specific per-test-PASS drop_regex. This rule is INERT in command
-  resolution: its `match` is a sentinel that no real command produces, so it is
-  only ever reached via `extends`, never matched directly.
+  their tool-specific per-test-PASS drop_regex. No real-world command matches its
+  sentinel `match`, so in practice it is only reached via `extends`. (It remains
+  technically resolvable by id/sentinel — inertness is by convention here, not an
+  enforced loader property.)
 match:
   command_regex: '^__lacon_test_base_never_matches__$'
 pipeline:
@@ -15,4 +16,7 @@ on_error:
   pipeline:
     - strip_ansi
     - keep_around_match: { pattern: '(?i)(FAILED|panicked|error|assertion)', before: 1, after: 6 }
-    - keep_tail: { lines: 60 }
+    # keep_head (not keep_tail): keep_around_match already extracted every failure +
+    # context; if that overflows the cap the FIRST failure is the root cause, so cap
+    # from the top so the root error always survives (WR-01). No-op when output <= 60.
+    - keep_head: { lines: 60 }

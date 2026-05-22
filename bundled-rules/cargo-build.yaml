@@ -21,4 +21,6 @@ on_error:
   pipeline:
     - strip_ansi
     - keep_around_match: { pattern: '^error', before: 0, after: 15 }
-    - keep_tail: { lines: 40 }
+    # keep_head (not keep_tail): the first error[Exxxx] is the root cause; cap from
+    # the top so it survives when many errors overflow the cap (WR-01). No-op <= 40.
+    - keep_head: { lines: 40 }

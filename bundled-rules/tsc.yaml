@@ -1,10 +1,13 @@
 id: tsc
-description: tsc / tsc --noEmit
-# D-10: match concrete tsc invocations (bare `tsc` and `tsc --noEmit`).
+description: tsc (any invocation)
+# WR-03: an empty args_prefix matches `tsc` with ANY arguments — this is intentional
+# (we filter every tsc run; the type-error output is the signal regardless of flags).
+# The schema has no exact-args operator, so bare-vs-flagged cannot be distinguished;
+# a single empty-prefix entry is the whole match (the former `--noEmit` alternative
+# was dead — the empty prefix already subsumes it).
 match:
   any:
     - { command: tsc, args_prefix: [] }
-    - { command: tsc, args_prefix: ['--noEmit'] }
 # RESEARCH Pattern 3 — the output IS the signal. tsc emits NOTHING on clean
 # success; on failure every `error TSxxxx` line is unique. Reduction comes only
 # from ANSI strip + collapsing accidental duplicates + a tail cap, NOT from
