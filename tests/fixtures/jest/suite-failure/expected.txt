@@ -1,0 +1,7 @@
+FAIL src/broken.test.js
+  ● adds 1 + 2
+    Expected: 4
+    Received: 3
+      at Object.toBe (src/broken.test.js:1:42)
+Test Suites: 1 failed, 3 passed, 4 total
+Tests:       1 failed, 7 passed, 8 total

@@ -1,0 +1,21 @@
+command: jest
+exit_code: 1
+tool_version: "jest 30.4.1"
+captured_at: 2026-05-22
+os: linux
+exempt_from_reduction_check: true
+must_keep_lines:
+  - "FAIL src/broken.test.js"
+  - "Expected:"
+  - "Received:"
+  - "at Object.toBe (src/broken.test.js:1:42)"
+notes: >-
+  Real npx capture (jest NOT installed): same throwaway project with one failing
+  suite (broken.test.js), `npx -p jest jest --no-watchman` (one-shot, NO
+  --watch). Captured via a pipe (jest writes the full FAIL block to stderr even
+  in non-interactive mode; deterministic, no ANSI). jest test failures exit 1 ->
+  routes through on_error. Failure context is intentionally preserved (the
+  "FAIL <file>" header, the ● failure block, the Expected:/Received: diff, and
+  the "at <file>:line:col" frame, plus the Test Suites:/Tests: summary), so this
+  fixture is exempt from the >=50% reduction floor and instead asserts error
+  survival via must_keep_lines.

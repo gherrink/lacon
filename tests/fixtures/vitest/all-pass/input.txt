@@ -1,0 +1,19 @@
+
+ RUN  v4.1.7 /tmp/lacon-vitest
+
+ ✓ src/arr.test.js (4 tests) 3ms
+ ✓ src/bool.test.js (4 tests) 3ms
+ ✓ src/date.test.js (4 tests) 3ms
+ ✓ src/json.test.js (4 tests) 4ms
+ ✓ src/math.test.js (4 tests) 4ms
+ ✓ src/mul.test.js (2 tests) 2ms
+ ✓ src/obj.test.js (4 tests) 3ms
+ ✓ src/regexp.test.js (4 tests) 4ms
+ ✓ src/set.test.js (4 tests) 3ms
+ ✓ src/str.test.js (3 tests) 2ms
+ ✓ src/sum.test.js (3 tests) 2ms
+
+ Test Files  11 passed (11)
+      Tests  40 passed (40)
+   Start at  07:22:06
+   Duration  164ms (transform 81ms, setup 0ms, import 208ms, tests 33ms, environment 1ms)

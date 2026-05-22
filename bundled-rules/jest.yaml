@@ -1,0 +1,28 @@
+id: jest
+description: jest / npx jest
+# jest writes most output to stderr — the lacon merge captures it (filter_bytes
+# takes the merged bytes). strip_ansi is prepended by the parent
+# (bundled/test-base) per ADR-0012, so it runs before any regex stage here
+# (Pitfall 1). On success drop the per-suite PASS lines and the Snapshots/Time/
+# "Ran all test suites" scaffolding, keeping the "Test Suites:"/"Tests:" summary.
+# NO look-around (RE2). NO max_bytes (D-07; loader auto-injects the cap).
+extends: bundled/test-base
+match:
+  any:
+    - command: jest
+    - command: npx
+      args_prefix: [jest]
+pipeline:
+  # strip_ansi is prepended by the parent (bundled/test-base) per ADR-0012.
+  - drop_regex: '^PASS '
+  - drop_regex: '^Snapshots:'
+  - drop_regex: '^Time:'
+  - drop_regex: '^Ran all test suites'
+on_error:
+  pipeline:
+    - strip_ansi
+    # Keep the failing-suite header, the ● failure blocks, ✕ failing-test lines,
+    # the Expected/Received diff, the "at file:line:col" frames, and the
+    # Test Suites:/Tests: summary.
+    - keep_regex: '(^FAIL |^\s*● |^\s*✕ |Expected:|Received:|at .* \(.*:\d+:\d+\)|^Test Suites:|^Tests:)'
+    - keep_tail: { lines: 80 }

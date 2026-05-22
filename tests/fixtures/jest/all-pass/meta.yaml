@@ -1,0 +1,18 @@
+command: jest
+exit_code: 0
+tool_version: "jest 30.4.1"
+captured_at: 2026-05-22
+os: linux
+exempt_from_reduction_check: false
+notes: >-
+  Real npx capture (jest NOT installed in this repo): throwaway node project,
+  `npx -p jest jest --no-watchman` (one-shot, NO --watch). 10 passing suites /
+  30 tests. jest writes its reporter output to STDERR — the lacon merge
+  (filter_bytes takes merged bytes) captures it. jest 30 emits a colorized
+  summary block when run in a terminal (captured here via a PTY so the genuine
+  ANSI is exercised by strip_ansi); it does NOT print per-suite "PASS <file>"
+  lines in this fast non-interactive run (the documented "^PASS " drop is still
+  authored per D-10 / RESEARCH for versions/configs that emit them). Reduction
+  ~0.30: strip_ansi (inherited from bundled/test-base) removes the SGR codes and
+  the success pipeline drops Snapshots:/Time:/"Ran all test suites.", keeping the
+  "Test Suites:"/"Tests:" summary. exit 0 -> success pipeline.

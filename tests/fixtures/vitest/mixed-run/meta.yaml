@@ -1,0 +1,19 @@
+command: vitest run
+exit_code: 1
+tool_version: "vitest 4.1.7"
+captured_at: 2026-05-22
+os: linux
+exempt_from_reduction_check: true
+must_keep_lines:
+  - "FAIL"
+  - "failed"
+  - "expected 4 to be 5"
+notes: >-
+  Real npx capture (vitest NOT installed): same throwaway project with one
+  failing test (broken.test.js), `npx -p vitest vitest run --reporter=default`
+  (one-shot, NO --watch). vitest test failures exit 1 -> routes through
+  on_error. Failure context is intentionally preserved (the FAIL header, the
+  AssertionError "expected 4 to be 5" detail, the failing-file summary line,
+  and the "Test Files"/"Tests" summary), so this fixture is exempt from the
+  >=50% reduction floor and instead asserts error survival via must_keep_lines.
+  Per-file lines sorted; tmp path anonymized.
