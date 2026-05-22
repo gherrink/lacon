@@ -105,6 +105,11 @@ None - no external service configuration required.
 - SC5 of the Phase 6 ship gate is satisfied: README (install + quickstart), worked example, and primitive reference all ship and link from the project root.
 - Ran fully parallel to Plans 01 and 02 (pure docs, no code dependency). No blockers introduced.
 
+## Self-Check: PASSED
+
+- Files: docs/primitive-reference.md, docs/worked-example.md, README.md, 06-03-SUMMARY.md all FOUND.
+- Commits: 8edbd01 (Task 1), 1c1ce86 (Task 2), 33af93d (Task 3), 2ec5faf (SUMMARY) all FOUND.
+
 ---
 *Phase: 06-v1-ship-gate-acceptance-docs*
 *Completed: 2026-05-22*
