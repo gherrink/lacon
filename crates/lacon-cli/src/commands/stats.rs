@@ -298,7 +298,7 @@ fn print_empty() {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_project, parse_since};
+    use super::{humanize_bytes, is_ephemeral, normalize_project, parse_since};
     use std::path::{Path, MAIN_SEPARATOR};
 
     // WR-03: an already-absolute path is returned unchanged (the common case
@@ -354,5 +354,47 @@ mod tests {
     #[test]
     fn parse_since_rejects_empty() {
         assert!(parse_since("").is_err());
+    }
+
+    // D-13: decimal-SI humanization. These six points are the Nyquist boundary
+    // set — they pin the B↔KB threshold (999/1000), prove the scheme is
+    // 1000-based not 1024-based (1024 → "1.0 KB", a binary scheme would print a
+    // different value / "KiB"), reproduce the ADR §4 literal ("22.8 KB"), cross
+    // the KB↔MB boundary (1_000_000 → "1.0 MB"), and pin the zero case. Interior
+    // points add nothing.
+    #[test]
+    fn humanize_bytes_decimal_si_boundaries() {
+        assert_eq!(humanize_bytes(0), "0 B");
+        assert_eq!(humanize_bytes(999), "999 B");
+        assert_eq!(humanize_bytes(1000), "1.0 KB");
+        // Decimal SI, NOT binary: 1024 bytes is still ~1.0 KB (1.024 → "1.0").
+        assert_eq!(humanize_bytes(1024), "1.0 KB");
+        // ADR §4 literal example.
+        assert_eq!(humanize_bytes(22_800), "22.8 KB");
+        assert_eq!(humanize_bytes(1_000_000), "1.0 MB");
+    }
+
+    // D-08: ephemeral detection must use component-wise `Path::starts_with`, not
+    // `str::starts_with`. The mandatory `/tmpfoo/x` negative is the regression
+    // guard for that distinction: as raw strings `"/tmpfoo/x".starts_with("/tmp")`
+    // is true, but `/tmpfoo` is a real (non-ephemeral) directory whose data must
+    // NOT collapse into the synthetic `(ephemeral)` bucket.
+    #[test]
+    fn is_ephemeral_matches_temp_roots_but_not_tmpfoo() {
+        assert!(is_ephemeral("/tmp/x"), "/tmp/x should be ephemeral");
+        assert!(
+            !is_ephemeral("/tmpfoo/x"),
+            "/tmpfoo/x must NOT be ephemeral (Path::starts_with is component-wise)"
+        );
+
+        // A path rooted at the runtime temp dir is ephemeral. `temp_dir()`
+        // reflects `$TMPDIR` when set, so build the candidate from it rather than
+        // mutating process env (which would race other tests).
+        let tmp = std::env::temp_dir();
+        let candidate = tmp.join("lacon-ephemeral-probe");
+        assert!(
+            is_ephemeral(&candidate.to_string_lossy()),
+            "a path under temp_dir() ({tmp:?}) should be ephemeral"
+        );
     }
 }
