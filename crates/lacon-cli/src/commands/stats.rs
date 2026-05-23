@@ -576,7 +576,10 @@ fn resolve_repo_root(path: &std::path::Path) -> Option<String> {
             Ok(cfg) => cfg
                 .lines()
                 .map(str::trim)
-                .any(|l| l.starts_with("bare") && l.replace(' ', "").contains("bare=true")),
+                // WR-01: exact-match the whitespace-stripped line. `contains`
+                // false-matched `bare = trueblue` (value PREFIXED by `true`);
+                // an exact `== "bare=true"` only fires on the boolean literal.
+                .any(|l| l.replace(' ', "") == "bare=true"),
             Err(_) => false,
         }
     }
