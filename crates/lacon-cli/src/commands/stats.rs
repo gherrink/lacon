@@ -608,11 +608,24 @@ fn resolve_repo_root(path: &std::path::Path) -> Option<String> {
         if meta.is_file() {
             // Gitlink: `gitdir: <path>` (relative resolved against the gitfile's
             // own directory; absolute used as-is). One gitdir hop.
-            let contents = std::fs::read_to_string(&dot_git).ok()?;
-            let gitdir_value = contents
+            //
+            // WR-03: an unreadable gitfile or a malformed gitlink (no `gitdir:`
+            // line) must `continue` to keep walking ancestors — NOT `?`-return
+            // None from the whole function, which would skip a parent repo and
+            // mismatch the directory branch's error posture (any failure → keep
+            // walking → ultimately the literal fallback, D-10).
+            let contents = match std::fs::read_to_string(&dot_git) {
+                Ok(c) => c,
+                Err(_) => continue, // unreadable gitlink → keep walking ancestors.
+            };
+            let gitdir_value = match contents
                 .lines()
                 .find_map(|l| l.trim().strip_prefix("gitdir:"))
-                .map(str::trim)?;
+                .map(str::trim)
+            {
+                Some(v) => v,
+                None => continue, // malformed gitlink (no `gitdir:`) → keep walking.
+            };
             let gitfile_dir = dot_git.parent().unwrap_or(ancestor);
             let admin_git_dir = lexical_join(gitfile_dir, gitdir_value);
 
@@ -864,6 +877,46 @@ mod tests {
         assert!(
             root.ends_with("super"),
             "relative gitdir must resolve against the gitfile dir: {root}"
+        );
+    }
+
+    // WR-03: a malformed `.git` FILE (a gitlink with no `gitdir:` line) at a
+    // child must NOT short-circuit the whole ancestor walk to None. The walk
+    // must `continue` past it and resolve the PARENT repo (a real `.git/` dir).
+    // Before the fix, `find_map(...)?` returned None from the function and the
+    // parent repo was never reached. Both fixtures live under the SAME parent so
+    // the resolved root is shared (asserted via tail-match, since tempdirs sit
+    // under /tmp which is otherwise ephemeral).
+    #[test]
+    fn resolve_repo_root_malformed_gitlink_child_falls_through_to_parent() {
+        let base = tempfile::tempdir().unwrap();
+        let repo = base.path().join("repo");
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        // A nested dir whose `.git` is a FILE with no `gitdir:` line (malformed).
+        let child = repo.join("child");
+        std::fs::create_dir_all(&child).unwrap();
+        std::fs::write(child.join(".git"), "not a gitlink at all\n").unwrap();
+
+        let root = resolve_repo_root(&child)
+            .expect("a malformed child gitlink must fall through to the parent repo");
+        assert!(
+            root.ends_with("repo"),
+            "malformed gitlink must keep walking to the parent repo root, not return None: {root}"
+        );
+    }
+
+    // WR-03: a malformed `.git` FILE with no readable/usable gitlink and NO
+    // parent repo above it resolves to None (the caller's literal fallback) —
+    // never a panic, and never a value that skips a (here absent) parent repo.
+    #[test]
+    fn resolve_repo_root_malformed_gitlink_no_parent_returns_none() {
+        let base = tempfile::tempdir().unwrap();
+        let leaf = base.path().join("leaf");
+        std::fs::create_dir_all(&leaf).unwrap();
+        std::fs::write(leaf.join(".git"), "garbage with no gitdir line\n").unwrap();
+        assert!(
+            resolve_repo_root(&leaf).is_none(),
+            "a malformed gitlink with no parent repo must be a clean None (literal fallback)"
         );
     }
 
