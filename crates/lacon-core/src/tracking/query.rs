@@ -73,6 +73,26 @@ pub struct ProjectSaving {
     pub bytes_saved: i64,
 }
 
+/// Scalar headline aggregate over `bypassed = 0` invocations (ADR 0014 §1 /
+/// D-05). Backs the stats headline: total runs, distinct projects, `raw → kept`
+/// bytes, and `bytes_saved`. Unlike the per-view row structs this is a single
+/// rolled-up row, not a list — see [`overall_totals`].
+///
+/// `distinct_projects` is `COUNT(DISTINCT project_path)` computed
+/// PRE-canonicalization: SQL has no filesystem access, so it cannot resolve
+/// symlinks or `..` segments. The headline's displayed "after canonicalization"
+/// project count is computed in `stats.rs` from the rolled-up project map, NOT
+/// from this field — it is kept available regardless for callers that want the
+/// raw stored-path distinct count.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OverallTotals {
+    pub total_runs: i64,
+    pub distinct_projects: i64,
+    pub raw_total: i64,
+    pub kept_total: i64,
+    pub bytes_saved: i64,
+}
+
 /// Stored raw output as `explain` consumes it: `(stdout, stderr)` BLOBs.
 /// Aliased to keep [`fetch_raw_output`]'s return type readable (clippy
 /// `type_complexity`).
@@ -362,6 +382,88 @@ pub fn filtered_project_savings(
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
+}
+
+// ---------------------------------------------------------------------------
+// (b2) Overall headline aggregate (ADR 0014 §1 / D-05) — scalar collapse over
+//      the base `invocations` table, no GROUP BY. D-01 forbids a `v_overall`
+//      view, so these read the base table directly. Every SUM is wrapped in
+//      COALESCE(..., 0) so a SUM over zero rows yields 0 rather than NULL.
+// ---------------------------------------------------------------------------
+
+/// Unfiltered headline aggregate over all `bypassed = 0` invocations.
+/// `kept_total == SUM(filtered_bytes)`; `bytes_saved == raw_total - kept_total`.
+pub fn overall_totals(conn: &Connection) -> Result<OverallTotals, TrackingError> {
+    let mut stmt = conn.prepare(
+        "SELECT COUNT(*) AS total_runs,
+                COUNT(DISTINCT project_path) AS distinct_projects,
+                COALESCE(SUM(raw_stdout_bytes + raw_stderr_bytes), 0) AS raw_total,
+                COALESCE(SUM(filtered_bytes), 0) AS kept_total,
+                COALESCE(SUM(raw_stdout_bytes + raw_stderr_bytes - filtered_bytes), 0)
+                    AS bytes_saved
+         FROM invocations
+         WHERE bypassed = 0",
+    )?;
+    // A scalar aggregate always returns EXACTLY one row (all-zeros on an empty
+    // table thanks to the COALESCEs), so use query_row — not query_map().collect()
+    // like every other reader in this module.
+    let row = stmt.query_row([], |r| {
+        Ok(OverallTotals {
+            total_runs: r.get(0)?,
+            distinct_projects: r.get(1)?,
+            raw_total: r.get(2)?,
+            kept_total: r.get(3)?,
+            bytes_saved: r.get(4)?,
+        })
+    })?;
+    Ok(row)
+}
+
+/// Filtered counterpart of [`overall_totals`] (D-09 re-query shape). Filters:
+/// `since_cutoff_ms` (keep `ts >= cutoff`) and `project` (`project_path = ?`).
+/// The headline spans matched AND unmatched runs (D-05), so there is no
+/// `rule_id` predicate. A filter matching zero rows returns an all-zero
+/// `OverallTotals` (COALESCE + query_row), never NULL/Err.
+pub fn filtered_overall_totals(
+    conn: &Connection,
+    since_cutoff_ms: Option<i64>,
+    project: Option<&str>,
+) -> Result<OverallTotals, TrackingError> {
+    let mut sql = String::from(
+        "SELECT COUNT(*) AS total_runs,
+                COUNT(DISTINCT project_path) AS distinct_projects,
+                COALESCE(SUM(raw_stdout_bytes + raw_stderr_bytes), 0) AS raw_total,
+                COALESCE(SUM(filtered_bytes), 0) AS kept_total,
+                COALESCE(SUM(raw_stdout_bytes + raw_stderr_bytes - filtered_bytes), 0)
+                    AS bytes_saved
+         FROM invocations
+         WHERE bypassed = 0",
+    );
+    let mut binds: Vec<&dyn rusqlite::ToSql> = Vec::new();
+    let mut n = 0;
+    if let Some(cut) = since_cutoff_ms.as_ref() {
+        n += 1;
+        sql.push_str(&format!(" AND ts >= ?{n}"));
+        binds.push(cut);
+    }
+    if let Some(p) = project.as_ref() {
+        n += 1;
+        sql.push_str(&format!(" AND project_path = ?{n}"));
+        binds.push(p);
+    }
+
+    let mut stmt = conn.prepare(&sql)?;
+    // Scalar aggregate → exactly one row; query_row, not query_map().collect().
+    let row = stmt.query_row(binds.as_slice(), |r| {
+        Ok(OverallTotals {
+            total_runs: r.get(0)?,
+            distinct_projects: r.get(1)?,
+            raw_total: r.get(2)?,
+            kept_total: r.get(3)?,
+            bytes_saved: r.get(4)?,
+        })
+    })?;
+    Ok(row)
 }
 
 // ---------------------------------------------------------------------------
