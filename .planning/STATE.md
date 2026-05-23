@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 8 context gathered (assumptions mode)
-last_updated: "2026-05-23T13:57:51.981Z"
-last_activity: 2026-05-23 -- Phase 08 planning complete
+stopped_at: Completed 08-01-PLAN.md
+last_updated: "2026-05-23T14:06:16.914Z"
+last_activity: 2026-05-23
 progress:
   total_phases: 8
   completed_phases: 7
   total_plans: 39
-  completed_plans: 36
+  completed_plans: 37
   percent: 88
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-06)
 
 **Core value:** Reduce the bytes an AI coding assistant ingests from bash output by 30–70% without dropping signal — locally, with sub-10ms cold start, and a YAML rule per command.
-**Current focus:** Milestone complete
+**Current focus:** Phase 08 — Redesign lacon stats output for readability (ADR 0014)
 
 ## Current Position
 
-Phase: 07
-Plan: Not started
+Phase: 08 (Redesign lacon stats output for readability (ADR 0014)) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-05-23 -- Phase 08 planning complete
+Last activity: 2026-05-23
 
-Progress: [██████████] 100%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
@@ -78,6 +78,7 @@ Progress: [██████████] 100%
 | Phase 04-cli-completion-stats-explain-doctor P03 | 4min | 3 tasks | 5 files |
 | Phase 04-cli-completion-stats-explain-doctor P04 | 4min | 3 tasks | 4 files |
 | Phase 07 P01 | 12min | 3 tasks | 4 files |
+| Phase 08 P01 | 6min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -153,6 +154,7 @@ Full decision log lives in PROJECT.md "Key Decisions" (13 LOCKED ADRs). Recent d
 - [Phase ?]: [Phase 04 PLAN-04]: doctor DB checks use open_readonly ONLY (D-08, T-04-11) and gate on db_path.exists() before opening, so a fresh run never creates history.db (D-04 preserved); doctor.rs has zero Tracker::open refs (grep gate = 0). cli_surface hardened: purge/install/stats --serve each proven non-zero (D-13, REQ-cli-surface-cap).
 - [Phase 07]: [Phase 07 PLAN-01]: raw capture field RunOutcome.raw_captured: Option<Vec<u8>> + RunOptions.capture_raw: bool (default false, derive(Default)); capture form is raw_buffer.join("\n").into_bytes() with NO trailing newline (D-05) — exact inverse of the per-line reader build so filter_bytes' split-on-\n re-split round-trips byte-identically (proven by the Task 3 byte-exact E2E)
 - [Phase 07]: [Phase 07 PLAN-01]: run.rs:275 hard-coded None gap closed — capture flag set from resolved store_raw_outputs via shared load_cfg/config_paths/user_config_dir helpers (flag in run_with_rule, gate in record_invocation read the SAME value); RawOutput{stdout: captured, stderr: Vec::new()} (D-04 merged stream) passed as Some(&raw); existing double-gate in Tracker::record is the sole persist authority (D-07). Default-off path byte-for-byte unchanged (D-03/D-09), no new clippy warnings.
+- [Phase 08]: [Phase 08 PLAN-01]: overall_totals/filtered_overall_totals readers added behind lacon-core::tracking::query (D-02); scalar COALESCE(SUM,0) + query_row over bypassed=0 base table, no v_overall view/migration/field rename (D-01 fence); ?N placeholder binds (T-08-02), no rule_id predicate so headline spans matched+unmatched (D-05)
 
 ### Pending Todos
 
@@ -185,6 +187,6 @@ None blocking. Three deferred-to-prototyping open questions assigned to phases a
 
 ## Session Continuity
 
-Last session: 2026-05-23T12:06:25.352Z
-Stopped at: Phase 8 context gathered (assumptions mode)
-Resume file: .planning/phases/08-redesign-lacon-stats-output-for-readability-adr-0014/08-CONTEXT.md
+Last session: 2026-05-23T14:06:16.907Z
+Stopped at: Completed 08-01-PLAN.md
+Resume file: None
