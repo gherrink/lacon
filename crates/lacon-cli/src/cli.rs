@@ -64,9 +64,7 @@ pub enum CliCommand {
         all: bool,
     },
     /// Re-run filtering against stored raw output for a tracked invocation.
-    Explain {
-        id: String,
-    },
+    Explain { id: String },
     /// Verify lacon setup at BOTH project and user scope (hook + LACON.md +
     /// `@import` reference per scope), plus configs/rules/DB health.
     Doctor,

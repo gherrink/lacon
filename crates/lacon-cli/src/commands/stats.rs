@@ -195,7 +195,12 @@ pub fn execute(
         println!("  no data yet");
     } else {
         print_capped(&unmatched, all, |r| {
-            format!("  {}  runs={}  raw={}", r.command_normalized, r.runs, render(r.total_raw_bytes))
+            format!(
+                "  {}  runs={}  raw={}",
+                r.command_normalized,
+                r.runs,
+                render(r.total_raw_bytes)
+            )
         });
     }
     println!();
@@ -344,7 +349,8 @@ fn rollup_project_savings(rows: &[query::ProjectSaving]) -> Vec<RolledSaving> {
         acc.bytes_saved += r.bytes_saved;
     }
     let mut out: Vec<RolledSaving> = map.into_values().collect();
-    out.sort_by(|a, b| b.bytes_saved.cmp(&a.bytes_saved));
+    // DESC by bytes_saved (Reverse keeps it a clippy-clean sort_by_key).
+    out.sort_by_key(|r| std::cmp::Reverse(r.bytes_saved));
     out
 }
 
@@ -661,8 +667,14 @@ mod tests {
     // WR-03: a single trailing separator is stripped so `proj/` == `proj`.
     #[test]
     fn normalize_project_strips_trailing_separator() {
-        let with_slash = format!("{}home{}me{}proj{}", MAIN_SEPARATOR, MAIN_SEPARATOR, MAIN_SEPARATOR, MAIN_SEPARATOR);
-        let without = format!("{}home{}me{}proj", MAIN_SEPARATOR, MAIN_SEPARATOR, MAIN_SEPARATOR);
+        let with_slash = format!(
+            "{}home{}me{}proj{}",
+            MAIN_SEPARATOR, MAIN_SEPARATOR, MAIN_SEPARATOR, MAIN_SEPARATOR
+        );
+        let without = format!(
+            "{}home{}me{}proj",
+            MAIN_SEPARATOR, MAIN_SEPARATOR, MAIN_SEPARATOR
+        );
         assert_eq!(normalize_project(Path::new(&with_slash)), without);
     }
 

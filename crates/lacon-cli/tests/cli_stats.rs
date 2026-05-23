@@ -157,19 +157,47 @@ fn stats_seeded_db_shows_four_sections_and_offender_rows() {
     // Unmatched offender (no rule).
     insert_invocation(&conn, now_ms, "/p/a", "make", None, 0, 5000, 5000, 0);
     // Filtered offender (matched rule).
-    insert_invocation(&conn, now_ms, "/p/a", "cargo", Some("cargo-rule"), 0, 8000, 1200, 0);
+    insert_invocation(
+        &conn,
+        now_ms,
+        "/p/a",
+        "cargo",
+        Some("cargo-rule"),
+        0,
+        8000,
+        1200,
+        0,
+    );
 
     let assert = lacon(xdg.path()).arg("stats").assert().success();
     let out = assert.get_output();
     let stdout = String::from_utf8_lossy(&out.stdout);
 
     // D-15: section headers use the relabeled task-oriented strings.
-    assert!(stdout.contains("Commands with no rule"), "missing section header; got:\n{stdout}");
-    assert!(stdout.contains("Rule effectiveness"), "missing section header; got:\n{stdout}");
-    assert!(stdout.contains("Bypass rates"), "missing section header; got:\n{stdout}");
-    assert!(stdout.contains("Savings by project"), "missing section header; got:\n{stdout}");
-    assert!(stdout.contains("make"), "expected unmatched offender row; got:\n{stdout}");
-    assert!(stdout.contains("cargo"), "expected filtered offender row; got:\n{stdout}");
+    assert!(
+        stdout.contains("Commands with no rule"),
+        "missing section header; got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("Rule effectiveness"),
+        "missing section header; got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("Bypass rates"),
+        "missing section header; got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("Savings by project"),
+        "missing section header; got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("make"),
+        "expected unmatched offender row; got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("cargo"),
+        "expected filtered offender row; got:\n{stdout}"
+    );
 }
 
 #[test]
@@ -197,7 +225,10 @@ fn stats_project_filter_narrows_output() {
     // Without filter: both visible.
     let all = lacon(xdg.path()).arg("stats").assert().success();
     let all_out = String::from_utf8_lossy(&all.get_output().stdout).to_string();
-    assert!(all_out.contains("ninja") && all_out.contains("scons"), "both present unfiltered; got:\n{all_out}");
+    assert!(
+        all_out.contains("ninja") && all_out.contains("scons"),
+        "both present unfiltered; got:\n{all_out}"
+    );
 
     // With --project /p/keep: only ninja's project remains.
     let filtered = lacon(xdg.path())
@@ -205,8 +236,14 @@ fn stats_project_filter_narrows_output() {
         .assert()
         .success();
     let f_out = String::from_utf8_lossy(&filtered.get_output().stdout).to_string();
-    assert!(f_out.contains("ninja"), "kept project's command present; got:\n{f_out}");
-    assert!(!f_out.contains("scons"), "other project's command must be filtered out; got:\n{f_out}");
+    assert!(
+        f_out.contains("ninja"),
+        "kept project's command present; got:\n{f_out}"
+    );
+    assert!(
+        !f_out.contains("scons"),
+        "other project's command must be filtered out; got:\n{f_out}"
+    );
 }
 
 #[test]
@@ -220,15 +257,31 @@ fn stats_since_filter_narrows_output() {
     // One recent, one ancient (older than 7 days).
     insert_invocation(&conn, now_ms, "/p/x", "recentcmd", None, 0, 3000, 3000, 0);
     let ten_days_ago = now_ms - 10 * 86_400_000;
-    insert_invocation(&conn, ten_days_ago, "/p/x", "ancientcmd", None, 0, 3000, 3000, 0);
+    insert_invocation(
+        &conn,
+        ten_days_ago,
+        "/p/x",
+        "ancientcmd",
+        None,
+        0,
+        3000,
+        3000,
+        0,
+    );
 
     let filtered = lacon(xdg.path())
         .args(["stats", "--since", "7d"])
         .assert()
         .success();
     let f_out = String::from_utf8_lossy(&filtered.get_output().stdout).to_string();
-    assert!(f_out.contains("recentcmd"), "recent command within window; got:\n{f_out}");
-    assert!(!f_out.contains("ancientcmd"), "command older than 7d must be excluded; got:\n{f_out}");
+    assert!(
+        f_out.contains("recentcmd"),
+        "recent command within window; got:\n{f_out}"
+    );
+    assert!(
+        !f_out.contains("ancientcmd"),
+        "command older than 7d must be excluded; got:\n{f_out}"
+    );
 }
 
 #[test]
@@ -302,9 +355,18 @@ fn stats_ephemeral_paths_collapse_to_one_bucket() {
         "≥3 temp-rooted projects must collapse to ONE (ephemeral) line; got:\n{stdout}"
     );
     // The individual temp paths must not appear in the project section.
-    assert!(!stdout.contains("lacon-eph-a"), "individual temp path leaked; got:\n{stdout}");
-    assert!(!stdout.contains("lacon-eph-b"), "individual temp path leaked; got:\n{stdout}");
-    assert!(!stdout.contains("lacon-eph-c"), "individual temp path leaked; got:\n{stdout}");
+    assert!(
+        !stdout.contains("lacon-eph-a"),
+        "individual temp path leaked; got:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("lacon-eph-b"),
+        "individual temp path leaked; got:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("lacon-eph-c"),
+        "individual temp path leaked; got:\n{stdout}"
+    );
 }
 
 // D-06/D-09: a repo (dir with a `.git/` subdir) and a subdir of it roll up into
@@ -364,7 +426,17 @@ fn stats_top_n_caps_project_section_with_more_hint() {
         std::fs::create_dir_all(p.join(".git")).unwrap();
         let s = p.to_string_lossy().into_owned();
         // Distinct byte_saved per row so ordering is stable.
-        insert_invocation(&conn, now_ms, &s, "cmd", None, 0, 10_000 - i as i64, 1000, 0);
+        insert_invocation(
+            &conn,
+            now_ms,
+            &s,
+            "cmd",
+            None,
+            0,
+            10_000 - i as i64,
+            1000,
+            0,
+        );
         paths.push(s);
     }
 
@@ -373,9 +445,18 @@ fn stats_top_n_caps_project_section_with_more_hint() {
 
     // Exactly 10 of the 11 seeded project paths are printed.
     let shown = paths.iter().filter(|p| stdout.contains(p.as_str())).count();
-    assert_eq!(shown, 10, "exactly 10 project rows expected; got {shown}:\n{stdout}");
-    assert!(stdout.contains("more"), "expected a '… more' hint; got:\n{stdout}");
-    assert!(stdout.contains("--all"), "the hint must mention --all; got:\n{stdout}");
+    assert_eq!(
+        shown, 10,
+        "exactly 10 project rows expected; got {shown}:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("more"),
+        "expected a '… more' hint; got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("--all"),
+        "the hint must mention --all; got:\n{stdout}"
+    );
 
     let _ = std::fs::remove_dir_all(&scratch);
 }
@@ -396,15 +477,31 @@ fn stats_all_flag_uncaps_and_drops_more_hint() {
         let p = scratch.join(format!("proj{i:02}"));
         std::fs::create_dir_all(p.join(".git")).unwrap();
         let s = p.to_string_lossy().into_owned();
-        insert_invocation(&conn, now_ms, &s, "cmd", None, 0, 10_000 - i as i64, 1000, 0);
+        insert_invocation(
+            &conn,
+            now_ms,
+            &s,
+            "cmd",
+            None,
+            0,
+            10_000 - i as i64,
+            1000,
+            0,
+        );
         paths.push(s);
     }
 
-    let assert = lacon(xdg.path()).args(["stats", "--all"]).assert().success();
+    let assert = lacon(xdg.path())
+        .args(["stats", "--all"])
+        .assert()
+        .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout).to_string();
 
     let shown = paths.iter().filter(|p| stdout.contains(p.as_str())).count();
-    assert_eq!(shown, 11, "--all must print all 11 project rows; got {shown}:\n{stdout}");
+    assert_eq!(
+        shown, 11,
+        "--all must print all 11 project rows; got {shown}:\n{stdout}"
+    );
     assert!(
         !stdout.contains("more (use --project"),
         "--all must drop the '… more' hint; got:\n{stdout}"
@@ -426,12 +523,24 @@ fn stats_bytes_flag_prints_exact_integers() {
 
     let default = lacon(xdg.path()).arg("stats").assert().success();
     let d_out = String::from_utf8_lossy(&default.get_output().stdout).to_string();
-    assert!(d_out.contains("22.8 KB"), "default run must humanize to 22.8 KB; got:\n{d_out}");
+    assert!(
+        d_out.contains("22.8 KB"),
+        "default run must humanize to 22.8 KB; got:\n{d_out}"
+    );
 
-    let bytes = lacon(xdg.path()).args(["stats", "--bytes"]).assert().success();
+    let bytes = lacon(xdg.path())
+        .args(["stats", "--bytes"])
+        .assert()
+        .success();
     let b_out = String::from_utf8_lossy(&bytes.get_output().stdout).to_string();
-    assert!(b_out.contains("22800"), "--bytes must print the exact integer; got:\n{b_out}");
-    assert!(!b_out.contains("KB"), "--bytes must NOT humanize; got:\n{b_out}");
+    assert!(
+        b_out.contains("22800"),
+        "--bytes must print the exact integer; got:\n{b_out}"
+    );
+    assert!(
+        !b_out.contains("KB"),
+        "--bytes must NOT humanize; got:\n{b_out}"
+    );
 }
 
 // D-05: the overall headline is printed BEFORE the first section header, carries
@@ -444,14 +553,26 @@ fn stats_headline_prints_first_with_runs_and_saved() {
 
     // Two counted rows + one bypassed row that must NOT enter the headline.
     insert_invocation(&conn, now_ms, "/p/a", "make", None, 0, 5000, 2000, 0);
-    insert_invocation(&conn, now_ms, "/p/b", "cargo", Some("cargo-rule"), 0, 8000, 1200, 0);
+    insert_invocation(
+        &conn,
+        now_ms,
+        "/p/b",
+        "cargo",
+        Some("cargo-rule"),
+        0,
+        8000,
+        1200,
+        0,
+    );
     insert_invocation(&conn, now_ms, "/p/c", "skip", None, 0, 9999, 9999, 1);
 
     let assert = lacon(xdg.path()).arg("stats").assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout).to_string();
 
     // The headline precedes the first section header (string-index comparison).
-    let headline_idx = stdout.find("Overall:").expect("a headline line must be printed");
+    let headline_idx = stdout
+        .find("Overall:")
+        .expect("a headline line must be printed");
     let first_section_idx = stdout
         .find("Commands with no rule")
         .expect("the first section header must be present");
@@ -462,8 +583,17 @@ fn stats_headline_prints_first_with_runs_and_saved() {
 
     // Grab just the headline line and assert it carries runs + a saved percent.
     let headline = stdout.lines().find(|l| l.contains("Overall:")).unwrap();
-    assert!(headline.contains("runs"), "headline must carry a runs count; got:\n{headline}");
-    assert!(headline.contains('%'), "headline must carry a saved percent; got:\n{headline}");
+    assert!(
+        headline.contains("runs"),
+        "headline must carry a runs count; got:\n{headline}"
+    );
+    assert!(
+        headline.contains('%'),
+        "headline must carry a saved percent; got:\n{headline}"
+    );
     // The bypassed row's 9999 raw bytes are excluded: only 2 runs counted.
-    assert!(headline.contains("2 runs"), "bypassed row must be excluded; got:\n{headline}");
+    assert!(
+        headline.contains("2 runs"),
+        "bypassed row must be excluded; got:\n{headline}"
+    );
 }
