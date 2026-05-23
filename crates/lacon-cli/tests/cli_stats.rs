@@ -689,7 +689,17 @@ fn stats_sub_one_percent_savings_not_zero() {
     let now_ms = 1_700_000_000_000_i64;
     let conn = init_db(xdg.path());
 
-    insert_invocation(&conn, now_ms, "/p/tiny", "almostnothing", None, 0, 1000, 991, 0);
+    insert_invocation(
+        &conn,
+        now_ms,
+        "/p/tiny",
+        "almostnothing",
+        None,
+        0,
+        1000,
+        991,
+        0,
+    );
 
     let assert = lacon(xdg.path()).arg("stats").assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout).to_string();
