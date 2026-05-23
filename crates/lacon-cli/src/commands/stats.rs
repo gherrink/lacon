@@ -14,17 +14,44 @@
 //! directly. `--since` accepts relative forms only (`Nd`/`Nh`/`Nm`); a
 //! malformed value errors with exit code 2 and no panic.
 //!
-//! # Output
-//! Plain text, snapshot-testable (D-11) — no color dependency.
+//! # Output (ADR 0014 read-time presentation layer)
+//! Plain text, no color dependency. An overall **headline** is printed first
+//! (D-05): total runs, distinct projects (after canonicalization), `raw → kept`
+//! bytes, and `saved` (absolute + percent), over `bypassed = 0` rows. Then four
+//! task-oriented sections (D-15): "Commands with no rule", "Rule effectiveness",
+//! "Bypass rates", "Savings by project". The project section re-aggregates the
+//! per-`project_path` rows under a canonical key (D-06/D-07: ephemeral →
+//! `(ephemeral)`, repo root via `.git`, else literal) and re-sorts by bytes
+//! saved DESC. Every section caps at [`TOP_N`] rows with a `… M more` drill-in
+//! hint (D-11); `--all` uncaps and suppresses the hint (D-12). Byte counts are
+//! humanized (`22.8 KB`) by default; `--bytes` prints exact integers (D-14).
+//!
+//! The stored field names (`filtered_bytes`/`avg_keep_ratio`) and the four
+//! `v_*` views are NOT renamed — relabeling is presentation-only (D-15 fence).
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use lacon_core::tracking::{self, query};
 
-/// Exit codes (documented for the SUMMARY): 0 success, 2 bad CLI input
-/// (malformed `--since`). The empty-DB path is a success (0), not an error.
-pub fn execute(project: Option<PathBuf>, since: Option<String>, rule: Option<String>) -> anyhow::Result<i32> {
+/// D-11: default per-section row cap before a `… M more` hint is printed.
+/// `--all` uncaps every section (D-12).
+const TOP_N: usize = 10;
+
+/// Exit codes (documented for the SUMMARY): 0 success, 1 a query/open failure,
+/// 2 bad CLI input (malformed `--since`). The empty-DB path is a success (0),
+/// not an error.
+///
+/// `bytes` (D-14): print exact integers instead of humanized byte counts.
+/// `all` (D-12): print every row uncapped and drop the `… M more` hint.
+pub fn execute(
+    project: Option<PathBuf>,
+    since: Option<String>,
+    rule: Option<String>,
+    bytes: bool,
+    all: bool,
+) -> anyhow::Result<i32> {
     // ─── Resolve --since to an absolute cutoff in unix MILLISECONDS (D-10) ───
     // ts is unix ms (tracking-data-model.md); cutoff = now_ms - n*unit_ms.
     let cutoff_ms: Option<i64> = match since.as_deref() {
@@ -85,12 +112,73 @@ pub fn execute(project: Option<PathBuf>, since: Option<String>, rule: Option<Str
         }
     };
 
-    // ─── Section 1: Unmatched offenders ─────────────────────────────────────
+    // BYTE RENDERER (D-14): exact integers under `--bytes`, else humanized.
+    // A closure so every render site (headline + all four sections) is uniform.
+    let render = |n: i64| -> String {
+        if bytes {
+            n.to_string()
+        } else {
+            humanize_bytes(n)
+        }
+    };
+
+    // ─── Project rollup FIRST (D-06): the headline's distinct-projects count is
+    // the rolled-up canonical-map length (Pitfall 7), NOT the SQL COUNT, so the
+    // headline number always equals the visible "Savings by project" rows. We
+    // therefore re-aggregate before printing the headline. ────────────────────
+    let savings_res = if filtered {
+        query::filtered_project_savings(&conn, cutoff_ms, project_ref)
+    } else {
+        query::project_savings(&conn)
+    };
+    let savings = match savings_res {
+        Ok(rows) => rows,
+        Err(e) => {
+            eprintln!("lacon stats: query failed: {e}");
+            return Ok(1);
+        }
+    };
+    let rolled = rollup_project_savings(&savings);
+
+    // ─── Headline (D-05, FIRST) ─────────────────────────────────────────────
+    // WR-02 posture: map a reader Err to `lacon stats:` + exit 1 rather than
+    // letting it escape via `?` -> anyhow (T-08-03). Spans matched + unmatched
+    // runs over `bypassed = 0`; `distinct_projects` from the SQL aggregate is
+    // PRE-canonicalization and is NOT displayed — we print `rolled.len()`.
+    let totals_res = if filtered {
+        query::filtered_overall_totals(&conn, cutoff_ms, project_ref)
+    } else {
+        query::overall_totals(&conn)
+    };
+    let totals = match totals_res {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("lacon stats: query failed: {e}");
+            return Ok(1);
+        }
+    };
+    let saved_pct = if totals.raw_total > 0 {
+        format!("{}%", totals.bytes_saved * 100 / totals.raw_total)
+    } else {
+        "—".to_string()
+    };
+    println!(
+        "Overall: {} runs across {} projects  ·  raw {} → kept {}  ·  saved {} ({})",
+        totals.total_runs,
+        rolled.len(),
+        render(totals.raw_total),
+        render(totals.kept_total),
+        render(totals.bytes_saved),
+        saved_pct,
+    );
+    println!();
+
+    // ─── Section 1: Commands with no rule (was "Unmatched offenders", D-15) ───
     // WR-02: map SELECT failures to `lacon stats:` + exit 1 rather than letting a
     // TrackingError::Sqlite escape via `?` -> anyhow (which prints the internal
     // "tracking: sqlite ..." text and bypasses the chosen exit code). Matches the
     // open-failure handling above and doctor's mapped posture (T-04-10).
-    println!("Unmatched offenders");
+    println!("Commands with no rule");
     let unmatched_res = if filtered {
         query::filtered_unmatched_offenders(&conn, cutoff_ms, project_ref)
     } else {
@@ -106,17 +194,18 @@ pub fn execute(project: Option<PathBuf>, since: Option<String>, rule: Option<Str
     if unmatched.is_empty() {
         println!("  no data yet");
     } else {
-        for r in &unmatched {
-            println!(
-                "  {}  runs={}  raw_bytes={}",
-                r.command_normalized, r.runs, r.total_raw_bytes
-            );
-        }
+        print_capped(&unmatched, all, |r| {
+            format!("  {}  runs={}  raw={}", r.command_normalized, r.runs, render(r.total_raw_bytes))
+        });
     }
     println!();
 
-    // ─── Section 2: Filtered offenders ──────────────────────────────────────
-    println!("Filtered offenders");
+    // ─── Section 2: Rule effectiveness (was "Filtered offenders", D-15) ──────
+    // Columns relabeled (D-15): the surviving-bytes column is `kept` (not
+    // `filtered_bytes`), and effectiveness is `saved %` (higher is better) — the
+    // inverse of the old `keep_ratio` (kept/raw, lower is better). We derive
+    // `saved %` from the avg keep ratio: saved% = 100 - keep_ratio*100.
+    println!("Rule effectiveness");
     let f_offenders_res = if filtered {
         query::filtered_filtered_offenders(&conn, cutoff_ms, project_ref, rule_ref)
     } else {
@@ -132,20 +221,20 @@ pub fn execute(project: Option<PathBuf>, since: Option<String>, rule: Option<Str
     if f_offenders.is_empty() {
         println!("  no data yet");
     } else {
-        for r in &f_offenders {
-            let ratio = r
+        print_capped(&f_offenders, all, |r| {
+            let saved = r
                 .avg_keep_ratio
-                .map(|v| format!("{v:.2}"))
+                .map(|v| format!("{:.0}%", (1.0 - v) * 100.0))
                 .unwrap_or_else(|| "-".to_string());
-            println!(
-                "  {}  rule={}  runs={}  filtered_bytes={}  keep_ratio={}",
+            format!(
+                "  {}  rule={}  runs={}  kept={}  saved %={}",
                 r.command_normalized,
                 r.rule_id.as_deref().unwrap_or("-"),
                 r.runs,
-                r.total_filtered_bytes,
-                ratio
-            );
-        }
+                render(r.total_filtered_bytes),
+                saved
+            )
+        });
     }
     println!();
 
@@ -166,45 +255,35 @@ pub fn execute(project: Option<PathBuf>, since: Option<String>, rule: Option<Str
     if bypass.is_empty() {
         println!("  no data yet");
     } else {
-        for r in &bypass {
-            println!(
+        print_capped(&bypass, all, |r| {
+            format!(
                 "  rule={}  total={}  bypassed={}  rate={:.2}",
                 r.rule_id.as_deref().unwrap_or("-"),
                 r.total,
                 r.bypassed,
                 r.bypass_rate
-            );
-        }
+            )
+        });
     }
     println!();
 
-    // ─── Section 4: Per-project savings ─────────────────────────────────────
-    println!("Per-project savings");
-    let savings_res = if filtered {
-        query::filtered_project_savings(&conn, cutoff_ms, project_ref)
-    } else {
-        query::project_savings(&conn)
-    };
-    let savings = match savings_res {
-        Ok(rows) => rows,
-        Err(e) => {
-            eprintln!("lacon stats: query failed: {e}");
-            return Ok(1);
-        }
-    };
-    if savings.is_empty() {
+    // ─── Section 4: Savings by project (was "Per-project savings", D-15) ─────
+    // Rolled up under the canonical key (D-06) and re-sorted by bytes_saved DESC
+    // (the DB ORDER BY is destroyed by the Rust re-aggregation), then capped.
+    println!("Savings by project");
+    if rolled.is_empty() {
         println!("  no data yet");
     } else {
-        for r in &savings {
-            println!(
-                "  {}  runs={}  raw={}  filtered={}  saved={}",
-                r.project_path.as_deref().unwrap_or("-"),
+        print_capped(&rolled, all, |r| {
+            format!(
+                "  {}  runs={}  raw={}  kept={}  saved={}",
+                r.key,
                 r.total_runs,
-                r.raw_total,
-                r.filtered_total,
-                r.bytes_saved
-            );
-        }
+                render(r.raw_total),
+                render(r.filtered_total),
+                render(r.bytes_saved)
+            )
+        });
     }
 
     // WR-03: when a `--project` filter matched nothing in any section, the
@@ -216,19 +295,71 @@ pub fn execute(project: Option<PathBuf>, since: Option<String>, rule: Option<Str
         && unmatched.is_empty()
         && f_offenders.is_empty()
         && bypass.is_empty()
-        && savings.is_empty()
+        && rolled.is_empty()
     {
         if let Some(p) = project_ref {
             eprintln!(
                 "lacon stats: hint: --project matched no rows. It must equal the \
                  stored absolute project path verbatim (matched against `{p}`). \
-                 Try the absolute path printed under \"Per-project savings\" when \
+                 Try the absolute path printed under \"Savings by project\" when \
                  run without a filter."
             );
         }
     }
 
     Ok(0)
+}
+
+/// A canonical-key-rolled project-savings row (D-06). Mirrors
+/// [`query::ProjectSaving`]'s additive fields but keys on the resolved canonical
+/// project key (`(ephemeral)` / repo root / literal) instead of the raw stored
+/// `project_path`, with every additive field summed across the collapsed rows.
+struct RolledSaving {
+    key: String,
+    total_runs: i64,
+    raw_total: i64,
+    filtered_total: i64,
+    bytes_saved: i64,
+}
+
+/// D-06: re-aggregate per-`project_path` rows under [`canonical_project_key`],
+/// summing every additive field (exact — runs/raw/filtered/saved are all sums),
+/// then re-sort by `bytes_saved` DESC (the DB `ORDER BY` is destroyed by the
+/// HashMap rollup). All temp-dir paths collapse to one `(ephemeral)` row;
+/// worktrees/subdirs collapse to their repo root.
+fn rollup_project_savings(rows: &[query::ProjectSaving]) -> Vec<RolledSaving> {
+    let mut map: HashMap<String, RolledSaving> = HashMap::new();
+    for r in rows {
+        let key = canonical_project_key(r.project_path.as_deref().unwrap_or("-"));
+        let acc = map.entry(key.clone()).or_insert(RolledSaving {
+            key,
+            total_runs: 0,
+            raw_total: 0,
+            filtered_total: 0,
+            bytes_saved: 0,
+        });
+        acc.total_runs += r.total_runs;
+        acc.raw_total += r.raw_total;
+        acc.filtered_total += r.filtered_total;
+        acc.bytes_saved += r.bytes_saved;
+    }
+    let mut out: Vec<RolledSaving> = map.into_values().collect();
+    out.sort_by(|a, b| b.bytes_saved.cmp(&a.bytes_saved));
+    out
+}
+
+/// D-11/D-12: print up to [`TOP_N`] rows via `row_fmt`, and — unless `all` — a
+/// `… M more` drill-in hint when more rows exist. `--all` uncaps and suppresses
+/// the hint (T-08-08: bounds output regardless of history size by default).
+fn print_capped<T>(rows: &[T], all: bool, row_fmt: impl Fn(&T) -> String) {
+    let limit = if all { rows.len() } else { TOP_N };
+    for r in rows.iter().take(limit) {
+        println!("{}", row_fmt(r));
+    }
+    if !all && rows.len() > TOP_N {
+        let more = rows.len() - TOP_N;
+        println!("  … {more} more (use --project / --rule / --since / --all to drill in)");
+    }
 }
 
 /// WR-03: normalize a `--project` argument to line up with the stored
@@ -282,13 +413,14 @@ fn parse_since(s: &str) -> Result<i64, String> {
         .ok_or_else(|| "the window is too large".to_string())
 }
 
-/// Fresh-machine output: a "no data yet" line per section, exit 0 (D-03).
+/// Fresh-machine output: a "no data yet" line per section, exit 0 (D-03). The
+/// four headers use the relabeled D-15 strings to match `execute`'s output.
 fn print_empty() {
     for header in [
-        "Unmatched offenders",
-        "Filtered offenders",
+        "Commands with no rule",
+        "Rule effectiveness",
         "Bypass rates",
-        "Per-project savings",
+        "Savings by project",
     ] {
         println!("{header}");
         println!("  no data yet");
@@ -305,10 +437,8 @@ fn print_empty() {
 /// `1.0 MB`). All stored byte counts are `>= 0`, so the negative branch is not
 /// expected, but it is handled defensively (sign-prefixed) rather than panicking.
 ///
-/// Added by plan 08-02 as a standalone, fully unit-tested helper; the call sites
-/// in `execute`'s output body are wired by plan 08-03 (hence `allow(dead_code)`
-/// until then — it is exercised now only by the inline tests).
-#[allow(dead_code)]
+/// Added by plan 08-02 as a standalone, fully unit-tested helper; wired into
+/// `execute`'s `render` closure (every byte render site) by plan 08-03.
 fn humanize_bytes(n: i64) -> String {
     const UNIT: f64 = 1000.0;
     let neg = n < 0;
@@ -340,9 +470,8 @@ fn humanize_bytes(n: i64) -> String {
 /// matched. We deliberately do NOT add `/var/tmp` (it is persistent across
 /// reboots, not boot-ephemeral). `/dev/shm` is included as a Linux tmpfs root.
 ///
-/// Added by plan 08-02; consumed via `is_ephemeral`/`canonical_project_key` and
-/// wired into `execute` by plan 08-03 (`allow(dead_code)` until then).
-#[allow(dead_code)]
+/// Added by plan 08-02; consumed via `is_ephemeral`/`canonical_project_key`,
+/// which plan 08-03 wires into `execute`'s project rollup.
 fn ephemeral_prefixes() -> Vec<std::path::PathBuf> {
     let mut v = vec![
         std::path::PathBuf::from("/tmp"),
@@ -365,9 +494,8 @@ fn ephemeral_prefixes() -> Vec<std::path::PathBuf> {
 /// `canonicalize`s: ephemeral directories are frequently already deleted, and
 /// the write side stored the *logical* cwd, so symlink resolution would diverge.
 ///
-/// Added by plan 08-02; the canonical-key resolver and `execute` call sites are
-/// wired by plan 08-03 (`allow(dead_code)` until then — inline tests exercise it).
-#[allow(dead_code)]
+/// Added by plan 08-02; the canonical-key resolver and `execute`'s project
+/// rollup (plan 08-03) call it.
 fn is_ephemeral(stored: &str) -> bool {
     let p = std::path::Path::new(stored);
     ephemeral_prefixes()
@@ -398,9 +526,8 @@ fn is_ephemeral(stored: &str) -> bool {
 /// (D-10). `core.worktree`/`GIT_WORK_TREE` are not honored in v1 — parent-of-
 /// `.git` is the documented best-effort heuristic.
 ///
-/// Added by plan 08-02; wired into `execute`'s project rollup by plan 08-03
-/// (`allow(dead_code)` until then — inline tests exercise it now).
-#[allow(dead_code)]
+/// Added by plan 08-02; wired into `execute`'s project rollup (via
+/// `canonical_project_key`) by plan 08-03.
 fn resolve_repo_root(path: &std::path::Path) -> Option<String> {
     use std::path::{Path, PathBuf};
 
@@ -499,9 +626,8 @@ fn resolve_repo_root(path: &std::path::Path) -> Option<String> {
 ///   (c) **literal fallback** — the stored string verbatim, so the key never
 ///       regresses below the exact recorded path (D-10).
 ///
-/// PURE: no `canonicalize`, no subprocess. Added by plan 08-02; called by the
-/// project-savings rollup in plan 08-03 (`allow(dead_code)` until then).
-#[allow(dead_code)]
+/// PURE: no `canonicalize`, no subprocess. Added by plan 08-02; called by
+/// `rollup_project_savings` (plan 08-03).
 fn canonical_project_key(stored: &str) -> String {
     if is_ephemeral(stored) {
         return "(ephemeral)".to_string();

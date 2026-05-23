@@ -56,6 +56,12 @@ pub enum CliCommand {
         since: Option<String>,
         #[arg(long)]
         rule: Option<String>,
+        /// Print exact integer byte counts instead of humanized values (scripting).
+        #[arg(long)]
+        bytes: bool,
+        /// Print every row uncapped (suppresses the '… N more' lines).
+        #[arg(long)]
+        all: bool,
     },
     /// Re-run filtering against stored raw output for a tracked invocation.
     Explain {
