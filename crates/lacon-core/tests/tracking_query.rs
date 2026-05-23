@@ -442,3 +442,67 @@ fn read_path_helpers_compile_against_path_ref() {
         tracking::open_readonly(p)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Plan 08-01: overall_totals headline aggregate (ADR 0014 §1 / D-05)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn overall_totals_excludes_bypassed_rows() {
+    let (_tmp, db_path, _raw_id) = seed_realistic_db();
+    let conn = tracking::open_readonly(&db_path).expect("open_readonly");
+
+    let totals = tracking::query::overall_totals(&conn).expect("overall_totals");
+
+    // seed_realistic_db() writes 6 rows; exactly one (cargo test, 9999 bytes,
+    // /proj-a) is bypassed=1. The headline floor is bypassed=0, so the bypassed
+    // row's bytes (raw 9999) must be absent from every total. The five
+    // bypassed=0 rows (filtered_bytes = raw_stdout_bytes/2, raw_stderr=0):
+    //   pnpm install   raw 5000  kept 2500
+    //   pnpm install   raw 3000  kept 1500
+    //   tsc --noEmit   raw 1500  kept  750
+    //   cargo build    raw 4000  kept 2000
+    //   cargo check    raw  256  kept  128
+    // raw_total  = 5000 + 3000 + 1500 + 4000 + 256 = 13756
+    // kept_total = 2500 + 1500 +  750 + 2000 + 128 =  6878
+    let expected_raw = 5000 + 3000 + 1500 + 4000 + 256;
+    let expected_kept = 2500 + 1500 + 750 + 2000 + 128;
+    assert_eq!(totals.total_runs, 5, "only the 5 bypassed=0 rows counted");
+    assert_eq!(
+        totals.raw_total, expected_raw,
+        "bypassed row's raw bytes (9999) absent from raw_total"
+    );
+    assert_eq!(totals.kept_total, expected_kept, "kept_total == SUM(filtered_bytes)");
+    assert_eq!(
+        totals.bytes_saved,
+        expected_raw - expected_kept,
+        "bytes_saved == raw_total - kept_total"
+    );
+    // /proj-a and /proj-b appear among bypassed=0 rows → 2 distinct projects.
+    assert_eq!(totals.distinct_projects, 2, "two distinct stored project paths");
+}
+
+#[test]
+fn filtered_overall_totals_empty_filter_returns_zeroed_row() {
+    // Regression guard for the scalar-SUM-over-zero-rows NULL pitfall: a filter
+    // matching nothing on a POPULATED db must yield an all-zero OverallTotals
+    // (proves COALESCE(SUM,0) + query_row), not a NULL-conversion Err or panic.
+    let (_tmp, db_path, _raw_id) = seed_realistic_db();
+    let conn = tracking::open_readonly(&db_path).expect("open_readonly");
+
+    let totals =
+        tracking::query::filtered_overall_totals(&conn, None, Some("/nope-no-such-project"))
+            .expect("filtered_overall_totals must not Err on a zero-match filter");
+
+    assert_eq!(
+        totals,
+        tracking::query::OverallTotals {
+            total_runs: 0,
+            distinct_projects: 0,
+            raw_total: 0,
+            kept_total: 0,
+            bytes_saved: 0,
+        },
+        "zero-match filter returns an all-zero headline, not NULL/Err"
+    );
+}
