@@ -246,6 +246,66 @@ fn stats_project_filter_narrows_output() {
     );
 }
 
+// CR-02: the Bypass rates section (Section 3) must honor `--project` like the
+// other three sections. Before the fix, `filtered_bypass_rate` took no project
+// argument, so a `--project` run leaked global bypass data into Section 3.
+// Each rule needs > 5 runs to clear the view's `HAVING COUNT(*) > 5` gate.
+#[test]
+fn stats_project_filter_narrows_bypass_section() {
+    let xdg = tempdir().unwrap();
+    let now_ms = 1_700_000_000_000_i64;
+    let conn = init_db(xdg.path());
+    // Two projects, each with a distinct rule run 6 times (> 5) and bypassed,
+    // so each clears the bypass-view gate and shows a nonzero rate.
+    for _ in 0..6 {
+        insert_invocation(
+            &conn,
+            now_ms,
+            "/p/keep",
+            "cmdkeep",
+            Some("keeprule"),
+            0,
+            4000,
+            4000,
+            1,
+        );
+        insert_invocation(
+            &conn,
+            now_ms,
+            "/p/drop",
+            "cmddrop",
+            Some("droprule"),
+            0,
+            4000,
+            4000,
+            1,
+        );
+    }
+
+    // Unfiltered: both rules appear in the bypass section.
+    let all = lacon(xdg.path()).arg("stats").assert().success();
+    let all_out = String::from_utf8_lossy(&all.get_output().stdout).to_string();
+    assert!(
+        all_out.contains("keeprule") && all_out.contains("droprule"),
+        "both bypass rules present unfiltered; got:\n{all_out}"
+    );
+
+    // With --project /p/keep: only keeprule's bypass row survives.
+    let filtered = lacon(xdg.path())
+        .args(["stats", "--project", "/p/keep"])
+        .assert()
+        .success();
+    let f_out = String::from_utf8_lossy(&filtered.get_output().stdout).to_string();
+    assert!(
+        f_out.contains("keeprule"),
+        "kept project's bypass rule present; got:\n{f_out}"
+    );
+    assert!(
+        !f_out.contains("droprule"),
+        "other project's bypass rule must be filtered out; got:\n{f_out}"
+    );
+}
+
 #[test]
 fn stats_since_filter_narrows_output() {
     let xdg = tempdir().unwrap();

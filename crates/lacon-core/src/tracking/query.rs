@@ -297,10 +297,12 @@ pub fn filtered_filtered_offenders(
 }
 
 /// Filtered counterpart of `v_bypass_rate` (D-09). Filters:
-/// `since_cutoff_ms`, `rule`. Preserves the view's `HAVING COUNT(*) > 5` gate.
+/// `since_cutoff_ms`, `project`, `rule`. Preserves the view's
+/// `HAVING COUNT(*) > 5` gate.
 pub fn filtered_bypass_rate(
     conn: &Connection,
     since_cutoff_ms: Option<i64>,
+    project: Option<&str>,
     rule: Option<&str>,
 ) -> Result<Vec<BypassRate>, TrackingError> {
     let mut sql = String::from(
@@ -317,6 +319,14 @@ pub fn filtered_bypass_rate(
         n += 1;
         sql.push_str(&format!(" AND ts >= ?{n}"));
         binds.push(cut);
+    }
+    // CR-02: scope the bypass section to `--project` like the other three
+    // filtered re-queries, so Section 3 does not leak global data (and the
+    // all-empty hint in stats.rs stays live) when a project filter is set.
+    if let Some(p) = project.as_ref() {
+        n += 1;
+        sql.push_str(&format!(" AND project_path = ?{n}"));
+        binds.push(p);
     }
     if let Some(rl) = rule.as_ref() {
         n += 1;

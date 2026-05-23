@@ -246,7 +246,10 @@ pub fn execute(
     // ─── Section 3: Bypass rates ────────────────────────────────────────────
     println!("Bypass rates");
     let bypass_res = if filtered {
-        query::filtered_bypass_rate(&conn, cutoff_ms, rule_ref)
+        // CR-02: thread `project_ref` so the bypass section is scoped to
+        // `--project` like the other three sections (and the all-empty hint
+        // below fires correctly when the project genuinely has no data).
+        query::filtered_bypass_rate(&conn, cutoff_ms, project_ref, rule_ref)
     } else {
         query::bypass_rate(&conn)
     };
