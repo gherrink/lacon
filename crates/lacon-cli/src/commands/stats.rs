@@ -373,6 +373,143 @@ fn is_ephemeral(stored: &str) -> bool {
     ephemeral_prefixes().iter().any(|prefix| p.starts_with(prefix))
 }
 
+/// D-09/D-10: resolve a stored project path to its repository root via a bounded
+/// sequence of read-only filesystem reads — NO `git` subprocess, NO
+/// `canonicalize` (the stored dir may already be gone, and we must not resolve
+/// symlinks away from the logical cwd the write side recorded).
+///
+/// Walks `path.ancestors()` looking for a `.git` entry:
+///   - `.git` is a **directory** → that ancestor is the repo root, unless its
+///     `config` declares `core.bare = true` (a bare repo has no working tree, so
+///     there is nothing to roll a project path up to) → `None` (D-10).
+///   - `.git` is a **file** → it is a gitlink of the form `gitdir: <path>`. Strip
+///     the prefix and `trim_end`; a relative value is resolved against the
+///     gitfile's own directory (git submodules write relative; `git worktree`
+///     writes absolute). Then read `<gitdir>/commondir` (conventionally `../..`,
+///     relative to that admin gitdir; an absolute value is legal too) to locate
+///     the main `.git` directory; the repo root is the **parent** of that main
+///     `.git`. A single gitdir hop then a single commondir hop — no unbounded
+///     chain following (T-08-04).
+///
+/// Every IO error, missing `.git`, malformed gitlink, bare repo, or absent
+/// directory yields `None`; the caller falls back to the literal stored path
+/// (D-10). `core.worktree`/`GIT_WORK_TREE` are not honored in v1 — parent-of-
+/// `.git` is the documented best-effort heuristic.
+///
+/// Added by plan 08-02; wired into `execute`'s project rollup by plan 08-03
+/// (`allow(dead_code)` until then — inline tests exercise it now).
+#[allow(dead_code)]
+fn resolve_repo_root(path: &std::path::Path) -> Option<String> {
+    use std::path::{Path, PathBuf};
+
+    // Lexically join `base` with a possibly-relative `value`, then pop any
+    // `..`/`.` components WITHOUT touching the filesystem (no canonicalize). An
+    // absolute `value` replaces `base` entirely.
+    fn lexical_join(base: &Path, value: &str) -> PathBuf {
+        let raw = Path::new(value);
+        let joined = if raw.is_absolute() {
+            raw.to_path_buf()
+        } else {
+            base.join(raw)
+        };
+        let mut out = PathBuf::new();
+        for comp in joined.components() {
+            use std::path::Component;
+            match comp {
+                Component::ParentDir => {
+                    out.pop();
+                }
+                Component::CurDir => {}
+                other => out.push(other.as_os_str()),
+            }
+        }
+        out
+    }
+
+    // Returns true iff `<git_dir>/config` declares `core.bare = true` (D-10).
+    fn is_bare(git_dir: &Path) -> bool {
+        match std::fs::read_to_string(git_dir.join("config")) {
+            Ok(cfg) => cfg
+                .lines()
+                .map(str::trim)
+                .any(|l| l.starts_with("bare") && l.replace(' ', "").contains("bare=true")),
+            Err(_) => false,
+        }
+    }
+
+    for ancestor in path.ancestors() {
+        let dot_git = ancestor.join(".git");
+        let meta = match std::fs::metadata(&dot_git) {
+            Ok(m) => m,
+            Err(_) => continue, // no .git at this ancestor; keep walking up.
+        };
+
+        if meta.is_dir() {
+            // Normal repo (or a run from a subdirectory). A bare repo has no
+            // working tree → literal fallback.
+            if is_bare(&dot_git) {
+                return None;
+            }
+            return Some(ancestor.to_string_lossy().into_owned());
+        }
+
+        if meta.is_file() {
+            // Gitlink: `gitdir: <path>` (relative resolved against the gitfile's
+            // own directory; absolute used as-is). One gitdir hop.
+            let contents = std::fs::read_to_string(&dot_git).ok()?;
+            let gitdir_value = contents
+                .lines()
+                .find_map(|l| l.trim().strip_prefix("gitdir:"))
+                .map(str::trim)?;
+            let gitfile_dir = dot_git.parent().unwrap_or(ancestor);
+            let admin_git_dir = lexical_join(gitfile_dir, gitdir_value);
+
+            // commondir locates the main `.git` (one commondir hop). Default to
+            // the admin gitdir itself if commondir is absent (a plain gitlink
+            // pointing straight at the main .git).
+            let main_git_dir = match std::fs::read_to_string(admin_git_dir.join("commondir")) {
+                Ok(common) => lexical_join(&admin_git_dir, common.trim()),
+                Err(_) => admin_git_dir.clone(),
+            };
+
+            if is_bare(&main_git_dir) {
+                return None;
+            }
+            // Repo root is the parent of the main `.git` directory.
+            return main_git_dir
+                .parent()
+                .map(|p| p.to_string_lossy().into_owned());
+        }
+
+        // A `.git` that is neither dir nor file (symlink to nothing, device,
+        // ...) → treat as absent and keep walking.
+    }
+
+    None
+}
+
+/// D-07: resolve a stored `project_path` to its canonical rollup key, in
+/// precedence order:
+///   (a) **ephemeral** — a path under a temp root collapses to `(ephemeral)`,
+///       and this WINS over `.git` so a throwaway repo created under `/tmp`
+///       still buckets as ephemeral (D-07/D-08);
+///   (b) **repo root** via `.git` resolution (D-09);
+///   (c) **literal fallback** — the stored string verbatim, so the key never
+///       regresses below the exact recorded path (D-10).
+///
+/// PURE: no `canonicalize`, no subprocess. Added by plan 08-02; called by the
+/// project-savings rollup in plan 08-03 (`allow(dead_code)` until then).
+#[allow(dead_code)]
+fn canonical_project_key(stored: &str) -> String {
+    if is_ephemeral(stored) {
+        return "(ephemeral)".to_string();
+    }
+    if let Some(root) = resolve_repo_root(std::path::Path::new(stored)) {
+        return root;
+    }
+    stored.to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
