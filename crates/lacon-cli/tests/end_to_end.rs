@@ -54,6 +54,9 @@ pipeline:
     Command::cargo_bin("lacon")
         .unwrap()
         .current_dir(dir.path())
+        // Isolate the tracking DB into the tempdir; without this the run records
+        // into the developer's real ~/.local/share/lacon/history.db (XDG default).
+        .env("XDG_DATA_HOME", dir.path())
         .args([
             "run",
             "--rule",
@@ -103,6 +106,7 @@ on_error:
     Command::cargo_bin("lacon")
         .unwrap()
         .current_dir(dir.path())
+        .env("XDG_DATA_HOME", dir.path())
         .args([
             "run",
             "--rule",
@@ -148,6 +152,7 @@ pipeline:
     Command::cargo_bin("lacon")
         .unwrap()
         .current_dir(dir.path())
+        .env("XDG_DATA_HOME", dir.path())
         .args([
             "run",
             "--rule",
@@ -199,6 +204,7 @@ pipeline:
     Command::cargo_bin("lacon")
         .unwrap()
         .current_dir(dir.path())
+        .env("XDG_DATA_HOME", dir.path())
         .args([
             "run",
             "--rule",
@@ -237,6 +243,7 @@ pipeline:
     Command::cargo_bin("lacon")
         .unwrap()
         .current_dir(dir.path())
+        .env("XDG_DATA_HOME", dir.path())
         .env("LACON_DISABLE", "1")
         .args([
             "run",
