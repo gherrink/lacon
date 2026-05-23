@@ -398,16 +398,22 @@ fn parse_since(s: &str) -> Result<i64, String> {
     if s.is_empty() {
         return Err("empty value; use a form like 7d, 24h, or 30m".to_string());
     }
-    let (num_part, unit) = s.split_at(s.len() - 1);
-    let unit_ms: i64 = match unit {
-        "d" => 86_400_000,
-        "h" => 3_600_000,
-        "m" => 60_000,
-        other => {
-            return Err(format!(
-                "unknown unit `{other}`; use d (days), h (hours), or m (minutes)"
-            ))
-        }
+    // CR-01: split on the last *character*, not the last byte. `s.len()` is a
+    // byte offset, so `split_at(s.len() - 1)` panics on a multi-byte UTF-8
+    // suffix (e.g. `7é`, `30µ`). Match the unit via `strip_suffix` (a char
+    // pattern, boundary-safe) so any non-ASCII or unknown suffix produces a
+    // clean exit-2 error (D-03) instead of a process-aborting panic.
+    let (num_part, unit_ms): (&str, i64) = if let Some(n) = s.strip_suffix('d') {
+        (n, 86_400_000)
+    } else if let Some(n) = s.strip_suffix('h') {
+        (n, 3_600_000)
+    } else if let Some(n) = s.strip_suffix('m') {
+        (n, 60_000)
+    } else {
+        let last = s.chars().next_back().unwrap_or(' ');
+        return Err(format!(
+            "unknown unit `{last}`; use d (days), h (hours), or m (minutes)"
+        ));
     };
     let n: i64 = num_part
         .parse()
@@ -711,6 +717,20 @@ mod tests {
     #[test]
     fn parse_since_rejects_empty() {
         assert!(parse_since("").is_err());
+    }
+
+    // CR-01: a `--since` value whose last character is a multi-byte UTF-8
+    // codepoint (e.g. `7é` = bytes 37 C3 A9) must return Err — NOT panic from a
+    // byte-offset `split_at` slicing inside the codepoint. The grammar requires
+    // a single ASCII unit suffix, so a non-ASCII suffix is an unknown unit.
+    #[test]
+    fn parse_since_multibyte_suffix_errors_no_panic() {
+        for bad in ["7é", "30µ", "24î", "é", "12£"] {
+            assert!(
+                parse_since(bad).is_err(),
+                "{bad:?} must be a clean Err, not a panic"
+            );
+        }
     }
 
     // D-13: decimal-SI humanization. These six points are the Nyquist boundary

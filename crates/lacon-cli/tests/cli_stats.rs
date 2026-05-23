@@ -299,6 +299,28 @@ fn stats_invalid_since_errors_nonzero_no_panic() {
     );
 }
 
+// CR-01: a `--since` value ending in a multi-byte UTF-8 character (here `7é`)
+// must exit non-zero with the clean malformed-`--since` message (D-03) and must
+// NOT abort with a Rust panic from a byte-offset `split_at` inside the codepoint.
+#[test]
+fn stats_multibyte_since_errors_nonzero_no_panic() {
+    let xdg = tempdir().unwrap();
+    init_db(xdg.path());
+    let assert = lacon(xdg.path())
+        .args(["stats", "--since", "7é"])
+        .assert()
+        .code(2);
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr).to_string();
+    assert!(
+        stderr.to_lowercase().contains("since"),
+        "expected a clear --since error (not a panic); got:\n{stderr}"
+    );
+    assert!(
+        !stderr.contains("panicked"),
+        "must not panic on a multi-byte --since suffix; got:\n{stderr}"
+    );
+}
+
 // ─── Phase 8 Plan 03 — ADR 0014 read-time presentation black-box tests ───────
 //
 // These follow the D-16 convention: targeted substring `contains(...)` checks on
