@@ -170,7 +170,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 5 (bundl
 | 5. Bundled Tier 1 rules | 9/9 | Complete    | 2026-05-22 |
 | 6. v1 ship gate — acceptance & docs | 3/3 | Complete    | 2026-05-22 |
 | 7. Close gap: lacon explain raw-capture | 1/1 | Complete   | 2026-05-22 |
-| 8. Redesign lacon stats output (ADR 0014) | 2/3 | In Progress|  |
+| 8. Redesign lacon stats output (ADR 0014) | 3/3 | Complete   | 2026-05-23 |
 
 ### Phase 7: Close gap: capture raw output on opt-in so lacon explain works end-to-end
 
@@ -188,7 +188,7 @@ Plans:
 **Goal:** Make `lacon stats` readable at real-world history sizes via a read-time presentation layer: an overall savings headline, project rollup (a single `(ephemeral)` temp-dir bucket + worktree/subdir → repo root via read-time `.git` resolution), top-N capping per section, and clarified column labels (`sent`/`saved %` instead of the ambiguous `filtered_bytes`/`keep_ratio`). Stored data model, the four SQL views, and the write hot path stay unchanged — no migration. Per ADR 0014.
 **Requirements**: ADR 0014 (docs/decisions/0014-stats-read-time-presentation.md)
 **Depends on:** Phase 7
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 **Wave 1**
@@ -198,4 +198,4 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 08-03-PLAN.md — --bytes/--all flags + restructured execute (headline-first, Rust-side project rollup, top-N cap, humanize, D-15 relabel) + black-box tests + full hermetic gate
+- [x] 08-03-PLAN.md — --bytes/--all flags + restructured execute (headline-first, Rust-side project rollup, top-N cap, humanize, D-15 relabel) + black-box tests + full hermetic gate
