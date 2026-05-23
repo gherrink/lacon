@@ -375,7 +375,10 @@ fn is_ephemeral(stored: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{humanize_bytes, is_ephemeral, normalize_project, parse_since};
+    use super::{
+        canonical_project_key, humanize_bytes, is_ephemeral, normalize_project, parse_since,
+        resolve_repo_root,
+    };
     use std::path::{Path, MAIN_SEPARATOR};
 
     // WR-03: an already-absolute path is returned unchanged (the common case
@@ -473,5 +476,149 @@ mod tests {
             is_ephemeral(&candidate.to_string_lossy()),
             "a path under temp_dir() ({tmp:?}) should be ephemeral"
         );
+    }
+
+    // ─── resolve_repo_root + canonical_project_key (.git resolution, D-09/D-10) ──
+    //
+    // All fixtures are built with std::fs under a tempdir — no `git` binary is
+    // needed and the production code never shells out to git (D-09). To avoid
+    // the ephemeral prefix collapsing the tempdir-rooted paths into
+    // `(ephemeral)`, these resolve_repo_root tests assert against the tail of
+    // the resolved path rather than full equality (the tempdir lives under
+    // /tmp). The `canonical_project_key` precedence test uses an OS tempdir on
+    // purpose (it MUST collapse to `(ephemeral)`).
+
+    // D-09: a `.git` DIRECTORY means the containing dir is the repo root, and a
+    // run from a subdirectory rolls up to that same root (the ancestor walk).
+    #[test]
+    fn resolve_repo_root_git_directory_rollup() {
+        let base = tempfile::tempdir().unwrap();
+        let repo = base.path().join("repo");
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        let sub = repo.join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+
+        let from_root = resolve_repo_root(&repo).expect("repo root resolves");
+        let from_sub = resolve_repo_root(&sub).expect("subdir resolves to repo root");
+        assert!(
+            from_root.ends_with("repo"),
+            "repo root should end with repo: {from_root}"
+        );
+        assert_eq!(from_root, from_sub, "subdir must roll up to the repo root");
+    }
+
+    // D-09: a `.git` FILE with an ABSOLUTE gitdir (the `git worktree` layout):
+    // wt/.git -> gitdir: <abs>/repo/.git/worktrees/wt ; commondir = "../.." ;
+    // the repo root is the parent of the main `.git` (i.e. `repo`).
+    #[test]
+    fn resolve_repo_root_worktree_absolute_gitdir() {
+        let base = tempfile::tempdir().unwrap();
+        let repo = base.path().join("repo");
+        let main_git = repo.join(".git");
+        let admin = main_git.join("worktrees").join("wt");
+        std::fs::create_dir_all(&admin).unwrap();
+        // commondir points back to the main .git (conventionally "../..").
+        std::fs::write(admin.join("commondir"), "../..\n").unwrap();
+
+        let wt = base.path().join("wt");
+        std::fs::create_dir_all(&wt).unwrap();
+        // Absolute gitdir, as `git worktree add` writes it.
+        std::fs::write(
+            wt.join(".git"),
+            format!("gitdir: {}\n", admin.display()),
+        )
+        .unwrap();
+
+        let root = resolve_repo_root(&wt).expect("worktree resolves to repo root");
+        assert!(
+            root.ends_with("repo"),
+            "worktree must resolve to the main repo root: {root}"
+        );
+    }
+
+    // D-09: a `.git` FILE with a RELATIVE gitdir (the git submodule layout) must
+    // resolve the relative value against the gitfile's OWN directory — the branch
+    // the absolute-worktree case does not exercise.
+    #[test]
+    fn resolve_repo_root_submodule_relative_gitdir() {
+        let base = tempfile::tempdir().unwrap();
+        let repo = base.path().join("super");
+        // The superproject keeps the submodule's admin dir under .git/modules/sub.
+        let admin = repo.join(".git").join("modules").join("sub");
+        std::fs::create_dir_all(&admin).unwrap();
+        // commondir locates the MAIN .git relative to this admin gitdir: from
+        // super/.git/modules/sub up to super/.git is "../..".
+        std::fs::write(admin.join("commondir"), "../..\n").unwrap();
+
+        // The submodule working dir sits at super/sub with a RELATIVE gitdir.
+        let sub = repo.join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        // Relative gitdir from super/sub to super/.git/modules/sub.
+        std::fs::write(sub.join(".git"), "gitdir: ../.git/modules/sub\n").unwrap();
+
+        let root = resolve_repo_root(&sub).expect("submodule resolves to superproject root");
+        assert!(
+            root.ends_with("super"),
+            "relative gitdir must resolve against the gitfile dir: {root}"
+        );
+    }
+
+    // D-10: literal fallback branch 1 — no `.git` anywhere → None (caller keeps
+    // the literal path). No panic.
+    #[test]
+    fn resolve_repo_root_no_git_returns_none() {
+        let base = tempfile::tempdir().unwrap();
+        let plain = base.path().join("plain");
+        std::fs::create_dir_all(&plain).unwrap();
+        assert!(resolve_repo_root(&plain).is_none());
+    }
+
+    // D-10: literal fallback branch 2 — a bare repo (`core.bare = true` in
+    // <.git>/config) has no working tree → None. No panic.
+    #[test]
+    fn resolve_repo_root_bare_repo_returns_none() {
+        let base = tempfile::tempdir().unwrap();
+        let repo = base.path().join("bare");
+        let git_dir = repo.join(".git");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::write(
+            git_dir.join("config"),
+            "[core]\n\tbare = true\n",
+        )
+        .unwrap();
+        assert!(resolve_repo_root(&repo).is_none());
+    }
+
+    // D-10: literal fallback branch 3 — a path that does not exist on disk → None
+    // (no canonicalize, no panic).
+    #[test]
+    fn resolve_repo_root_nonexistent_path_returns_none() {
+        let missing = Path::new("/this/path/should/not/exist/lacon-test");
+        assert!(resolve_repo_root(missing).is_none());
+    }
+
+    // D-07: canonical_project_key precedence — ephemeral wins over .git. A repo
+    // created under an OS temp root still collapses to `(ephemeral)`, never a
+    // repo-root key.
+    #[test]
+    fn canonical_project_key_ephemeral_beats_git() {
+        let base = tempfile::tempdir().unwrap(); // lives under an ephemeral root
+        let repo = base.path().join("repo");
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+
+        let key = canonical_project_key(&repo.to_string_lossy());
+        assert_eq!(
+            key, "(ephemeral)",
+            "an ephemeral-rooted repo must collapse to (ephemeral), not a repo root"
+        );
+    }
+
+    // D-10: canonical_project_key literal fallback — a non-ephemeral path with no
+    // resolvable .git returns the stored string verbatim (never regresses below
+    // the exact path).
+    #[test]
+    fn canonical_project_key_literal_fallback() {
+        let stored = "/this/path/should/not/exist/lacon-proj";
+        assert_eq!(canonical_project_key(stored), stored);
     }
 }
