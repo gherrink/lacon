@@ -370,7 +370,9 @@ fn ephemeral_prefixes() -> Vec<std::path::PathBuf> {
 #[allow(dead_code)]
 fn is_ephemeral(stored: &str) -> bool {
     let p = std::path::Path::new(stored);
-    ephemeral_prefixes().iter().any(|prefix| p.starts_with(prefix))
+    ephemeral_prefixes()
+        .iter()
+        .any(|prefix| p.starts_with(prefix))
 }
 
 /// D-09/D-10: resolve a stored project path to its repository root via a bounded
@@ -660,11 +662,7 @@ mod tests {
         let wt = base.path().join("wt");
         std::fs::create_dir_all(&wt).unwrap();
         // Absolute gitdir, as `git worktree add` writes it.
-        std::fs::write(
-            wt.join(".git"),
-            format!("gitdir: {}\n", admin.display()),
-        )
-        .unwrap();
+        std::fs::write(wt.join(".git"), format!("gitdir: {}\n", admin.display())).unwrap();
 
         let root = resolve_repo_root(&wt).expect("worktree resolves to repo root");
         assert!(
@@ -718,11 +716,7 @@ mod tests {
         let repo = base.path().join("bare");
         let git_dir = repo.join(".git");
         std::fs::create_dir_all(&git_dir).unwrap();
-        std::fs::write(
-            git_dir.join("config"),
-            "[core]\n\tbare = true\n",
-        )
-        .unwrap();
+        std::fs::write(git_dir.join("config"), "[core]\n\tbare = true\n").unwrap();
         assert!(resolve_repo_root(&repo).is_none());
     }
 
