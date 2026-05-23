@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-**v1.0 is code-complete.** The Rust workspace ships across six phases (engine, SQLite tracking, Claude Code adapter, CLI, ten bundled rules, ship gate). The design is locked down by 13 ADRs in `docs/decisions/`. Treat those ADRs as the source of truth — if a proposed change contradicts one, surface that explicitly rather than silently working around it.
+**v1.0 is code-complete.** The Rust workspace ships across six phases (engine, SQLite tracking, Claude Code adapter, CLI, ten bundled rules, ship gate). The design is locked down by 14 ADRs in `docs/decisions/`. Treat those ADRs as the source of truth — if a proposed change contradicts one, surface that explicitly rather than silently working around it.
 
 ## Workspace layout
 
