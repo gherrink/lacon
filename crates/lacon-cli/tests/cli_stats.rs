@@ -679,3 +679,23 @@ fn stats_headline_prints_first_with_runs_and_saved() {
         "bypassed row must be excluded; got:\n{headline}"
     );
 }
+
+// WR-02: a sub-1% savings ratio must not truncate to `0%`. raw 1000, filtered
+// 991 → saved 9 bytes = 0.9%. Integer division gave `0%`; the f64 path with one
+// decimal gives `0.9%`.
+#[test]
+fn stats_sub_one_percent_savings_not_zero() {
+    let xdg = tempdir().unwrap();
+    let now_ms = 1_700_000_000_000_i64;
+    let conn = init_db(xdg.path());
+
+    insert_invocation(&conn, now_ms, "/p/tiny", "almostnothing", None, 0, 1000, 991, 0);
+
+    let assert = lacon(xdg.path()).arg("stats").assert().success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout).to_string();
+    let headline = stdout.lines().find(|l| l.contains("Overall:")).unwrap();
+    assert!(
+        headline.contains("0.9%"),
+        "0.9% savings must not round to 0%; got:\n{headline}"
+    );
+}

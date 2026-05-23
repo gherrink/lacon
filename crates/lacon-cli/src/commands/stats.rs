@@ -158,7 +158,12 @@ pub fn execute(
         }
     };
     let saved_pct = if totals.raw_total > 0 {
-        format!("{}%", totals.bytes_saved * 100 / totals.raw_total)
+        // WR-02: compute in f64 with one decimal place. The old i64
+        // `bytes_saved * 100 / raw_total` truncated sub-1% savings to `0%`
+        // (e.g. 9 / 1000 → `0%`) and could overflow on extreme totals. One
+        // decimal matches the precision used in the Rule effectiveness section.
+        let pct = totals.bytes_saved as f64 * 100.0 / totals.raw_total as f64;
+        format!("{pct:.1}%")
     } else {
         "—".to_string()
     };
