@@ -296,6 +296,83 @@ fn print_empty() {
     }
 }
 
+/// D-13: humanize a byte count for the read-time presentation layer.
+///
+/// Decimal SI (1000-based, NOT 1024-based) per ADR 0014 §4 (whose literal
+/// example is `22.8 KB`): below 1 KB we print the raw integer with a `B` suffix
+/// (e.g. `512 B`, `0 B`); at and above 1 KB we divide by 1000 walking the SI
+/// units and format with a single decimal place (e.g. `1.0 KB`, `22.8 KB`,
+/// `1.0 MB`). All stored byte counts are `>= 0`, so the negative branch is not
+/// expected, but it is handled defensively (sign-prefixed) rather than panicking.
+///
+/// Added by plan 08-02 as a standalone, fully unit-tested helper; the call sites
+/// in `execute`'s output body are wired by plan 08-03 (hence `allow(dead_code)`
+/// until then — it is exercised now only by the inline tests).
+#[allow(dead_code)]
+fn humanize_bytes(n: i64) -> String {
+    const UNIT: f64 = 1000.0;
+    let neg = n < 0;
+    let bytes = n.unsigned_abs() as f64;
+    if bytes < UNIT {
+        // Raw integer below 1 KB, e.g. "512 B", "0 B", "999 B".
+        return format!("{n} B");
+    }
+    let units = ["KB", "MB", "GB", "TB", "PB"];
+    let mut value = bytes / UNIT;
+    let mut idx = 0;
+    while value >= UNIT && idx < units.len() - 1 {
+        value /= UNIT;
+        idx += 1;
+    }
+    let sign = if neg { "-" } else { "" };
+    // One decimal place above 1 KB, e.g. "22.8 KB", "1.0 MB".
+    format!("{sign}{value:.1} {}", units[idx])
+}
+
+/// D-08: the runtime-built set of filesystem prefixes that mark an ephemeral
+/// (boot-/test-scoped) working directory. A stored `project_path` rooted under
+/// any of these collapses into the single synthetic `(ephemeral)` bucket.
+///
+/// The static entries cover the conventional Linux (`/tmp`) and macOS
+/// (`/var/folders`, plus its `/private`-prefixed spelling that `current_dir()`
+/// can record) temp roots; `std::env::temp_dir()` and `$TMPDIR` add the
+/// runtime-resolved temp dir so test harnesses that override `TMPDIR` are also
+/// matched. We deliberately do NOT add `/var/tmp` (it is persistent across
+/// reboots, not boot-ephemeral). `/dev/shm` is included as a Linux tmpfs root.
+///
+/// Added by plan 08-02; consumed via `is_ephemeral`/`canonical_project_key` and
+/// wired into `execute` by plan 08-03 (`allow(dead_code)` until then).
+#[allow(dead_code)]
+fn ephemeral_prefixes() -> Vec<std::path::PathBuf> {
+    let mut v = vec![
+        std::path::PathBuf::from("/tmp"),
+        std::path::PathBuf::from("/var/folders"),
+        std::path::PathBuf::from("/private/var/folders"),
+        std::path::PathBuf::from("/dev/shm"),
+        std::env::temp_dir(),
+    ];
+    if let Some(t) = std::env::var_os("TMPDIR") {
+        v.push(std::path::PathBuf::from(t));
+    }
+    v
+}
+
+/// D-08: is the stored project path rooted under an ephemeral prefix?
+///
+/// Uses component-wise `Path::starts_with` — NOT `str::starts_with`, which would
+/// false-match `/tmpfoo` against `/tmp` and wrongly collapse a real project into
+/// the `(ephemeral)` bucket. Matches against the STORED string and never
+/// `canonicalize`s: ephemeral directories are frequently already deleted, and
+/// the write side stored the *logical* cwd, so symlink resolution would diverge.
+///
+/// Added by plan 08-02; the canonical-key resolver and `execute` call sites are
+/// wired by plan 08-03 (`allow(dead_code)` until then — inline tests exercise it).
+#[allow(dead_code)]
+fn is_ephemeral(stored: &str) -> bool {
+    let p = std::path::Path::new(stored);
+    ephemeral_prefixes().iter().any(|prefix| p.starts_with(prefix))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{humanize_bytes, is_ephemeral, normalize_project, parse_since};
