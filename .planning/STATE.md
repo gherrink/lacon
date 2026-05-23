@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: milestone_complete
-stopped_at: Milestone complete (Phase 07 was final phase)
-last_updated: 2026-05-22T21:44:29.215Z
+status: completed
+stopped_at: Phase 8 context gathered (assumptions mode)
+last_updated: "2026-05-23T12:06:25.359Z"
 last_activity: 2026-05-22
 progress:
-  total_phases: 7
+  total_phases: 8
   completed_phases: 7
   total_plans: 36
   completed_plans: 36
-  percent: 100
+  percent: 88
 ---
 
 # Project State
@@ -84,6 +84,7 @@ Progress: [██████████] 100%
 ### Roadmap Evolution
 
 - Phase 7 added: Close gap: capture raw output on opt-in so lacon explain works end-to-end (from v1.0 milestone audit gaps_found)
+- Phase 8 added: Redesign lacon stats output for readability (ADR 0014) — read-time presentation layer (project rollup, top-N capping, clarified columns); follows the stats tracking-hygiene fix (test XDG leak + DB purge)
 
 ### Decisions
 
@@ -184,6 +185,6 @@ None blocking. Three deferred-to-prototyping open questions assigned to phases a
 
 ## Session Continuity
 
-Last session: 2026-05-22T21:22:21.698Z
-Stopped at: Phase 7 context gathered (assumptions mode)
-Resume file: None
+Last session: 2026-05-23T12:06:25.352Z
+Stopped at: Phase 8 context gathered (assumptions mode)
+Resume file: .planning/phases/08-redesign-lacon-stats-output-for-readability-adr-0014/08-CONTEXT.md
