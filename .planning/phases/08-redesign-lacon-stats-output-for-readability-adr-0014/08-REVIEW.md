@@ -15,7 +15,9 @@ findings:
   warning: 3
   info: 1
   total: 6
-status: issues_found
+fixed: 5
+remaining: 1
+status: fixed
 ---
 
 # Phase 8: Code Review Report
@@ -58,7 +60,7 @@ branches of the ancestor walk.
 
 ## Critical Issues
 
-### CR-01: `parse_since` panics on multi-byte UTF-8 `--since` values
+### CR-01: `parse_since` panics on multi-byte UTF-8 `--since` values  [FIXED: 4a8bdaa]
 
 **File:** `crates/lacon-cli/src/commands/stats.rs:401`
 
@@ -109,7 +111,7 @@ let (num_part, unit_str) = ["d", "h", "m"]
 
 ---
 
-### CR-02: Bypass-rates section ignores `--project` filter; corrupts the "all-empty" hint
+### CR-02: Bypass-rates section ignores `--project` filter; corrupts the "all-empty" hint  [FIXED: 9a803e2]
 
 **File:** `crates/lacon-cli/src/commands/stats.rs:248-251` (bypass query call) and `299-313`
 (all-empty hint)
@@ -169,7 +171,7 @@ be empty when the project has no bypass-flagged invocations.
 
 ## Warnings
 
-### WR-01: `is_bare` false-positive via substring `contains` and cross-section match
+### WR-01: `is_bare` false-positive via substring `contains` and cross-section match  [FIXED: 022103e]
 
 **File:** `crates/lacon-cli/src/commands/stats.rs:570`
 
@@ -216,7 +218,7 @@ heuristic). The fix eliminates the substring and cross-section false positives.
 
 ---
 
-### WR-02: Saved-% uses integer division, silently rounds to `0%` for small savings
+### WR-02: Saved-% uses integer division, silently rounds to `0%` for small savings  [FIXED: 514afa2]
 
 **File:** `crates/lacon-cli/src/commands/stats.rs:161`
 
@@ -252,7 +254,7 @@ precision used throughout the `Rule effectiveness` section.
 
 ---
 
-### WR-03: `.git` file read failure short-circuits the ancestor walk; `.git` dir I/O errors continue
+### WR-03: `.git` file read failure short-circuits the ancestor walk; `.git` dir I/O errors continue  [FIXED: 676baf5]
 
 **File:** `crates/lacon-cli/src/commands/stats.rs:594`
 
