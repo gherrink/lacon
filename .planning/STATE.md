@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 08-01-PLAN.md
-last_updated: "2026-05-23T14:06:16.914Z"
+last_updated: "2026-05-23T14:17:10.014Z"
 last_activity: 2026-05-23
 progress:
   total_phases: 8
   completed_phases: 7
   total_plans: 39
-  completed_plans: 37
+  completed_plans: 38
   percent: 88
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Phase: 08 (Redesign lacon stats output for readability (ADR 0014)) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-05-23
 
-Progress: [██████████] 95%
+Progress: [██████████] 97%
 
 ## Performance Metrics
 
@@ -79,6 +79,7 @@ Progress: [██████████] 95%
 | Phase 04-cli-completion-stats-explain-doctor P04 | 4min | 3 tasks | 4 files |
 | Phase 07 P01 | 12min | 3 tasks | 4 files |
 | Phase 08 P01 | 6min | 2 tasks | 2 files |
+| Phase 08 P02 | 8min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -155,6 +156,7 @@ Full decision log lives in PROJECT.md "Key Decisions" (13 LOCKED ADRs). Recent d
 - [Phase 07]: [Phase 07 PLAN-01]: raw capture field RunOutcome.raw_captured: Option<Vec<u8>> + RunOptions.capture_raw: bool (default false, derive(Default)); capture form is raw_buffer.join("\n").into_bytes() with NO trailing newline (D-05) — exact inverse of the per-line reader build so filter_bytes' split-on-\n re-split round-trips byte-identically (proven by the Task 3 byte-exact E2E)
 - [Phase 07]: [Phase 07 PLAN-01]: run.rs:275 hard-coded None gap closed — capture flag set from resolved store_raw_outputs via shared load_cfg/config_paths/user_config_dir helpers (flag in run_with_rule, gate in record_invocation read the SAME value); RawOutput{stdout: captured, stderr: Vec::new()} (D-04 merged stream) passed as Some(&raw); existing double-gate in Tracker::record is the sole persist authority (D-07). Default-off path byte-for-byte unchanged (D-03/D-09), no new clippy warnings.
 - [Phase 08]: [Phase 08 PLAN-01]: overall_totals/filtered_overall_totals readers added behind lacon-core::tracking::query (D-02); scalar COALESCE(SUM,0) + query_row over bypassed=0 base table, no v_overall view/migration/field rename (D-01 fence); ?N placeholder binds (T-08-02), no rule_id predicate so headline spans matched+unmatched (D-05)
+- [Phase ?]: [Phase 08 PLAN-02]: stats presentation helpers added as private fns in commands/stats.rs (D-04) — humanize_bytes (decimal-SI, D-13), is_ephemeral/ephemeral_prefixes (component-wise Path::starts_with, D-08), resolve_repo_root (.git dir/worktree/submodule via bounded fs reads, no git subprocess, no canonicalize, D-09/D-10), canonical_project_key (precedence ephemeral->repo-root->literal, D-07); #[allow(dead_code)] until 08-03 wires call sites; execute signature unchanged; 8 new inline tests incl. /tmpfoo negative + 3 literal-fallback branches
 
 ### Pending Todos
 
@@ -187,6 +189,6 @@ None blocking. Three deferred-to-prototyping open questions assigned to phases a
 
 ## Session Continuity
 
-Last session: 2026-05-23T14:06:16.907Z
+Last session: 2026-05-23T14:16:55.836Z
 Stopped at: Completed 08-01-PLAN.md
 Resume file: None

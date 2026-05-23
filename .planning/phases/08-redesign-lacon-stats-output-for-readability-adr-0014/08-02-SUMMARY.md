@@ -195,3 +195,8 @@ Both tasks followed RED → GREEN with distinct commits:
 - Task 2: `test(08-02): add failing tests for resolve_repo_root …` (`fb0a86d`) →
   `feat(08-02): add resolve_repo_root + canonical_project_key …` (`ece56af`).
 No REFACTOR commits needed; one trailing `style` commit (`70438b5`) for fmt.
+
+## Self-Check: PASSED
+
+All created/modified files exist on disk; all five 08-02 commits
+(`06ef1e2`, `96a8585`, `fb0a86d`, `ece56af`, `70438b5`) are present in git history.
