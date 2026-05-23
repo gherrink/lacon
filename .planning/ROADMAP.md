@@ -143,6 +143,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 5 (bundl
 | 5. Bundled Tier 1 rules | 9/9 | Complete    | 2026-05-22 |
 | 6. v1 ship gate — acceptance & docs | 3/3 | Complete    | 2026-05-22 |
 | 7. Close gap: lacon explain raw-capture | 1/1 | Complete   | 2026-05-22 |
+| 8. Redesign lacon stats output (ADR 0014) | 0/3 | Planned    |  |
 
 ### Phase 7: Close gap: capture raw output on opt-in so lacon explain works end-to-end
 
@@ -153,3 +154,15 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 5 (bundl
 
 Plans:
 - [x] 07-01-PLAN.md — Gated RunOutcome/RunOptions raw capture (D-01..D-05) + run.rs RawOutput wiring & Some(&raw) record (D-06, D-07) + true E2E lacon run→explain byte-exact test & off-path negative guard (D-08..D-10)
+
+### Phase 8: Redesign lacon stats output for readability (ADR 0014)
+
+**Goal:** Make `lacon stats` readable at real-world history sizes via a read-time presentation layer: an overall savings headline, project rollup (a single `(ephemeral)` temp-dir bucket + worktree/subdir → repo root via read-time `.git` resolution), top-N capping per section, and clarified column labels (`sent`/`saved %` instead of the ambiguous `filtered_bytes`/`keep_ratio`). Stored data model, the four SQL views, and the write hot path stay unchanged — no migration. Per ADR 0014.
+**Requirements**: ADR 0014 (docs/decisions/0014-stats-read-time-presentation.md)
+**Depends on:** Phase 7
+**Plans:** 3 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — query::overall_totals + filtered counterpart (headline aggregate) behind the SQL boundary + lacon-core test (bypassed exclusion, zeroed filtered-empty)
+- [ ] 08-02-PLAN.md — stats.rs presentation helpers: humanize_bytes, ephemeral detection, .git repo-root resolution, canonical_project_key + inline unit tests
+- [ ] 08-03-PLAN.md — --bytes/--all flags + restructured execute (headline-first, Rust-side project rollup, top-N cap, humanize, D-15 relabel) + black-box tests + full hermetic gate
