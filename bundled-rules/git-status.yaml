@@ -7,14 +7,16 @@ pipeline:
   - strip_ansi
   # Drop the parenthetical git hint lines ("(use \"git add ...\" ...)") — pure noise.
   - drop_regex: '^\s*\(use '
-  # Collapse the long tab-indented file block under "Untracked files:" /
-  # "Changes not staged for commit:" into a few examples plus a summary. In a
-  # monorepo with -uall this block can be hundreds of lines; section headers
-  # (^On branch, ^Changes, ^Untracked files:) are NOT tab-indented so they survive.
-  - collapse_repeated:
-      pattern: '^\t'
-      max_kept: 5
-      summary: "\t… {count} more changed/untracked files"
+  # NO collapse of the tab-indented file block (D-08): the per-file lines under
+  # "Untracked files:" / "Changes not staged for commit:" ARE signal — an
+  # assistant needs to see WHICH files changed, not a synthetic count. Collapsing
+  # them emitted a tab-indented "… N more changed/untracked files" summary that
+  # blended into the real file lines it replaced (the D-07 fabrication failure
+  # mode). Every tab-indented line now survives verbatim; the only reductions are
+  # the ANSI strip and the "(use …)" hint drop. Because git-status output is then
+  # ≈ input, the success fixture is exempt_from_reduction_check (Open Q2 / tsc
+  # precedent — "the output IS the signal"). Section headers (^On branch,
+  # ^Untracked files:) were never tab-indented and were never at risk.
   # NO max_bytes — the loader auto-injects the 32768 cap (D-07).
 on_error:
   # git status only exits nonzero outside a repo ("fatal: not a git repository").

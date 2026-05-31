@@ -2,5 +2,23 @@ command: git status -uall
 exit_code: 0
 tool_version: "git 2.53.0"
 os: linux
-exempt_from_reduction_check: false
-notes: "chatty -uall in a fresh repo with 123 untracked files; collapse_repeated on ^\\t collapses the file block to 5 examples + a summary line"
+exempt_from_reduction_check: true
+must_keep_lines:
+  - "Untracked files:"
+  - "	.gitignore"
+  - "	Cargo.lock"
+  - "	src/gen/mod1.rs"
+  - "	src/gen/mod120.rs"
+  - "	src/gen/mod99.rs"
+  - "nothing added to commit but untracked files present"
+notes: >-
+  chatty -uall in a fresh repo with 123 untracked files. D-08: the
+  collapse_repeated stage on ^\t was REMOVED — those tab-indented per-file lines
+  ARE signal (an assistant needs to see WHICH files changed, not a synthetic
+  "… N more" count that blended into the file block it replaced — the D-07
+  fabrication failure mode). Every tab-indented line now survives VERBATIM; the
+  only reductions are strip_ansi (no-op here, no ANSI in the capture) and the
+  single "(use …)" hint drop. Open Q2 decision: because git-status output is now
+  ≈ input, the ≥50% reduction floor is structurally unachievable — so this
+  fixture is exempt_from_reduction_check (the same "the output IS the signal"
+  posture as tsc). Verbatim survival is proven by must_keep_lines instead.
