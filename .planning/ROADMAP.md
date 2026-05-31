@@ -173,7 +173,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 5 (bundl
 | 6. v1 ship gate — acceptance & docs | 3/3 | Complete    | 2026-05-22 |
 | 7. Close gap: lacon explain raw-capture | 1/1 | Complete   | 2026-05-22 |
 | 8. Redesign lacon stats output (ADR 0014) | 3/3 | Complete   | 2026-05-23 |
-| 9. Output-fidelity safety — no fabrication, reliable bypass | 3/3 | Complete   | 2026-05-31 |
+| 9. Output-fidelity safety — no fabrication, reliable bypass | 3/3 | Complete    | 2026-05-31 |
 
 ### Phase 7: Close gap: capture raw output on opt-in so lacon explain works end-to-end
 
