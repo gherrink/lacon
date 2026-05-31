@@ -18,6 +18,8 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
 - [x] **Phase 5: Bundled Tier 1 rules** - Ten YAML rules with success/failure fixtures and integration tests asserting ≥50% reduction with zero error-line drops (completed 2026-05-22)
 - [x] **Phase 6: v1 ship gate — acceptance & docs** - End-to-end acceptance validation (cold start, hot reload, `pnpm` E2E, `explain` reproducibility, hermetic test coverage) plus README, worked example, and primitive reference (completed 2026-05-22)
 - [x] **Phase 7: Close gap: capture raw output on opt-in so lacon explain works end-to-end** - Capture pre-filter bytes when `store_raw_outputs` is enabled so `lacon explain <id>` reproduces real invocations end-to-end, not just hand-seeded rows (added 2026-05-22 from v1.0 milestone audit, gaps_found) (completed 2026-05-22)
+- [x] **Phase 8: Redesign `lacon stats` output (ADR 0014)** - Read-time presentation layer for `lacon stats` (overall headline, project rollup, top-N capping, clarified columns); no schema migration (completed 2026-05-23)
+- [ ] **Phase 9: Output-fidelity safety — no fabrication on dedupe/collapse and guaranteed `LACON_DISABLE` bypass** - Never substitute/fabricate filtered lines; preserve tabular/repeated signal; reliable inline `LACON_DISABLE=1` byte-exact passthrough (added 2026-05-31 from v1.0 validation feedback)
 
 ## Phase Details
 
@@ -171,6 +173,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 5 (bundl
 | 6. v1 ship gate — acceptance & docs | 3/3 | Complete    | 2026-05-22 |
 | 7. Close gap: lacon explain raw-capture | 1/1 | Complete   | 2026-05-22 |
 | 8. Redesign lacon stats output (ADR 0014) | 3/3 | Complete   | 2026-05-23 |
+| 9. Output-fidelity safety — no fabrication, reliable bypass | 0/3 | Planned    |  |
 
 ### Phase 7: Close gap: capture raw output on opt-in so lacon explain works end-to-end
 
@@ -199,3 +202,26 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 08-03-PLAN.md — --bytes/--all flags + restructured execute (headline-first, Rust-side project rollup, top-N cap, humanize, D-15 relabel) + black-box tests + full hermetic gate
+
+### Phase 9: Output-fidelity safety — no fabrication on dedupe/collapse and guaranteed LACON_DISABLE bypass
+
+**Goal:** lacon never substitutes or fabricates content when filtering, and `LACON_DISABLE=1` is a hard guarantee of byte-exact passthrough on the Claude Code Bash hot path. Structurally-similar lines (aligned/tabular output, repeated-prefix loops, grep hits) are treated as signal: `dedupe`/`collapse_repeated` must drop with an explicit, visible elision marker — never replace a line with a placeholder token (e.g. the observed `table table table`) or invent plausible-but-false text. (Reproduced live during v1.0 validation, 2026-05-31: filtered Bash output returned substituted/fabricated rows and inline `LACON_DISABLE=1 <cmd>` failed to bypass.)
+**Requirements**: REQ-engine-bypass (byte-exact passthrough guarantee), REQ-adapter-bypass-detection (reliable inline `LACON_DISABLE=1` env-prefix detection in the PreToolUse hook), REQ-engine-streaming-primitives (`dedupe`/`collapse_repeated` must never substitute or fabricate — elide explicitly or preserve)
+**Depends on:** Phase 8
+**Plans:** 3 plans
+
+**Success Criteria** (what must be TRUE):
+
+  1. `dedupe` and `collapse_repeated` never emit a line that did not appear verbatim in the input; when they remove lines they leave an explicit elision marker rather than a substituted placeholder or fabricated text — proven by fixtures with aligned/tabular and repeated-prefix input where every surviving line is byte-identical to an input line.
+  2. A command issued from the Claude Code Bash tool with an inline `LACON_DISABLE=1 <cmd>` env prefix (not only `LACON_DISABLE=1 bash -c '…'`) is passed through byte-for-byte with zero filtering, verified by an integration test asserting stdout equals the unwrapped command's stdout exactly.
+  3. Bundled rules that use `dedupe`/`collapse_repeated` (e.g. `git-status`) are re-audited so no success-path fixture loses verbatim signal lines to collapse — tabular/repeated-prefix blocks survive or are elided with a marker, never substituted.
+
+Plans:
+**Wave 1** *(parallel — no file overlap)*
+
+- [ ] 09-01-PLAN.md — Inline `LACON_DISABLE=1` env-prefix parser in `detect_bypass` (D-01..D-04) + hook-e2e inline-prefix passthrough + engine byte-exact `run_bypassed` backstop assertion (D-05)
+- [ ] 09-02-PLAN.md — Standardize `collapse_repeated` elision marker to `[lacon: …]` at both in-run + flush sites (D-06, D-07, D-09); dedupe verified verbatim-only
+
+**Wave 2** *(blocked on 09-02 — fixtures encode the new marker)*
+
+- [ ] 09-03-PLAN.md — git-status re-audit: remove signal-collapsing stage + regenerate/add fixtures (D-08, D-11, Open Q1/Q2) + confirm tsc dedupe fixture (D-10) + update filter-rule-schema.md marker contract (D-12)
