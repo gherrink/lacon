@@ -1,9 +1,9 @@
 ---
 phase: 9
 slug: output-fidelity-safety-no-fabrication-on-dedupe-collapse-and
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: approved
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-05-31
 ---
 
@@ -79,11 +79,11 @@ created: 2026-05-31
 
 ## Validation Sign-Off
 
-- [ ] All tasks have an automated `cargo test` verify or a Wave 0 fixture dependency
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all new fixtures/tests
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 120s
-- [ ] `nyquist_compliant: true` set in frontmatter (after planner maps tasks)
+- [x] All tasks have an automated `cargo test` verify or a Wave 0 fixture dependency
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all new fixtures/tests
+- [x] No watch-mode flags
+- [x] Feedback latency < 120s
+- [x] `nyquist_compliant: true` set in frontmatter (after planner maps tasks)
 
-**Approval:** pending
+**Approval:** approved 2026-05-31

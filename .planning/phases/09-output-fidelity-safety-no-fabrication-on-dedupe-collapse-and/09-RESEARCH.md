@@ -351,21 +351,23 @@ Not applicable — this is a local Rust workspace with locked ADRs and no extern
 
 **Note:** A1 is the one item the planner should surface for confirmation if reproducing the exact `table table table` bytes is considered a hard acceptance requirement. Per the D-07 reinterpretation of success-criterion #1, it is not — the class-based fixtures suffice.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Is reproducing the literal `table table table` string a phase acceptance requirement?**
+All three were settled during planning (Phase 9 plans 09-01..09-03) and are encoded as explicit tasks, not silently dropped.
+
+1. **Is reproducing the literal `table table table` string a phase acceptance requirement?** — **RESOLVED: No.**
    - What we know: it was observed live; the git-status template does not produce it; the originating command (per TODO.md) was a per-item loop, not `git status`.
    - What's unclear: which rule (if any) produced it, or whether it was a user-command artifact.
-   - Recommendation: do NOT gate on the exact string. Gate on the D-07 reinterpretation (no line mistakable for real output) using tabular + repeated-prefix + grep-hit fixtures. Flag to user if they want the exact repro chased.
+   - Resolution: do NOT gate on the exact string. Plan 09-03 gates fixtures on the D-07 class reinterpretation (every surviving line byte-identical to an input line / no line mistakable for real output) using tabular + repeated-prefix fixtures.
 
-2. **git-status reduction floor: exempt vs. narrow (D-08 "remove/narrow")?**
+2. **git-status reduction floor: exempt vs. narrow (D-08 "remove/narrow")?** — **RESOLVED: Exempt.**
    - What we know: removing collapse makes output ≈ input → breaches the ≥50% assertion.
    - What's unclear: user preference between (a) exempt the fixture (tabular = signal, like tsc) or (b) keep a narrowed collapse with the standardized marker.
-   - Recommendation: exempt (cleanest D-08 expression). Planner should decide explicitly and record in `meta.yaml` notes.
+   - Resolution: exempt — Plan 09-03 Task 1 sets `exempt_from_reduction_check: true` (mirroring `tsc`) and records the decision in `meta.yaml` notes.
 
-3. **Byte-exact assertion strength for the bypass e2e (success-criterion #2 wording).**
+3. **Byte-exact assertion strength for the bypass e2e (success-criterion #2 wording).** — **RESOLVED: Two-part proof.**
    - What we know: when the hook bypasses, it returns `PassThrough` (empty stdout) and the *shell* runs the unwrapped command — the hook never produces the command's stdout, so a "stdout equals unwrapped command's stdout" assertion is not a hook-level test.
-   - Recommendation: assert at the hook layer that no rewrite occurs (empty stdout). If a literal byte-exact-passthrough assertion is wanted, add a separate `lacon run` engine test proving `run_bypassed` is byte-exact (the D-05 backstop), and treat the two together as the criterion-#2 proof.
+   - Resolution: Plan 09-01 asserts at the hook layer that no rewrite occurs (empty stdout / PassThrough) AND adds a separate engine test proving `run_bypassed` is byte-exact (the D-05 backstop); the two together satisfy success-criterion #2.
 
 ## Environment Availability
 
