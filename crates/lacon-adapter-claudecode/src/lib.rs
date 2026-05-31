@@ -32,21 +32,94 @@ pub enum HookOutcome {
 
 /// Detect whether the whole command should bypass filtering entirely (D-23/24/25).
 ///
-/// Two triggers, checked cheaply before any chain split or rule resolution:
+/// Three triggers, checked cheaply before any chain split or rule resolution:
 /// - **D-23 `!!` prefix:** the command, after LSTRIP of leading whitespace,
 ///   `starts_with("!!")`.
-/// - **D-24 `LACON_DISABLE=1`:** the env var equals the exact string `"1"`.
-///   Mirrors the engine precedent at `crates/lacon-core/src/runtime/mod.rs:175`
-///   (`as_deref() == Ok("1")`) — other values (empty, `"0"`, `"true"`) do NOT
-///   bypass.
+/// - **D-01..D-04 inline `LACON_DISABLE=1` env-prefix:** a leading shell
+///   assignment `LACON_DISABLE=1` (or `"1"`/`'1'`) on the command STRING bypasses.
+///   This is the agent's only usable escape hatch — `!!` cannot be typed inside
+///   Claude Code's Bash tool, so inline `LACON_DISABLE=1` is the sole way to turn
+///   filtering off from inside an agent turn. See [`inline_disable_bypass`].
+/// - **D-24 process-env `LACON_DISABLE=1`:** the env var equals the exact string
+///   `"1"`. Mirrors the engine precedent at
+///   `crates/lacon-core/src/runtime/mod.rs:191` (`as_deref() == Ok("1")`) — other
+///   values (empty, `"0"`, `"true"`) do NOT bypass.
 ///
-/// Either trigger means the entire input bypasses (D-25 — whole-command
+/// Any trigger means the entire input bypasses (D-25 — whole-command
 /// granularity, the cheapest hot path).
 fn detect_bypass(command: &str) -> bool {
     if command.trim_start().starts_with("!!") {
         return true;
     }
+    if inline_disable_bypass(command) {
+        return true;
+    }
     std::env::var("LACON_DISABLE").as_deref() == Ok("1")
+}
+
+/// Scan the leading shell-assignment prefix of `command` for `LACON_DISABLE=1`
+/// (D-01..D-04).
+///
+/// A shell command may be preceded by zero or more `NAME=value` assignments
+/// (`FOO=bar LACON_DISABLE=1 echo hi`). The FIRST whitespace token that is not a
+/// well-formed assignment (`^[A-Za-z_][A-Za-z0-9_]*=`) is the command word — we
+/// stop scanning there (this is what makes `echo LACON_DISABLE=1` NOT bypass,
+/// D-04: `echo` is the command word so the trailing `LACON_DISABLE=1` is an
+/// argument, never an assignment prefix).
+///
+/// For each leading assignment named exactly `LACON_DISABLE`, we strip ONE
+/// balanced layer of surrounding `'...'` or `"..."` from the value and bypass iff
+/// it equals exactly `"1"` — matching the locked engine `as_deref() == Ok("1")`
+/// semantics (`1`, `"1"`, `'1'` bypass; `0`/`true`/empty do not).
+///
+/// Deliberately a cheap, allocation-light leading scan over `split_whitespace`
+/// (no full POSIX assignment grammar) to respect the ≤10ms cold-start budget
+/// (T-09-02 DoS mitigation).
+fn inline_disable_bypass(command: &str) -> bool {
+    for token in command.split_whitespace() {
+        let Some((name, value)) = split_leading_assignment(token) else {
+            // First non-assignment token is the command word — stop (D-04).
+            break;
+        };
+        if name == "LACON_DISABLE" && unquote_one_layer(value) == "1" {
+            return true;
+        }
+        // Other leading assignment (e.g. FOO=bar) — keep scanning the prefix.
+    }
+    false
+}
+
+/// If `token` has the shape `NAME=value` with `NAME` matching
+/// `^[A-Za-z_][A-Za-z0-9_]*`, return `Some((name, value))`; else `None`.
+///
+/// `value` is the raw (still-quoted) remainder after the first `=`.
+fn split_leading_assignment(token: &str) -> Option<(&str, &str)> {
+    let eq = token.find('=')?;
+    let name = &token[..eq];
+    let mut chars = name.chars();
+    let first = chars.next()?;
+    if !(first.is_ascii_alphabetic() || first == '_') {
+        return None;
+    }
+    if !chars.all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return None;
+    }
+    Some((name, &token[eq + 1..]))
+}
+
+/// Strip exactly one balanced layer of surrounding single or double quotes from
+/// `value`. `"1"` and `'1'` → `1`; an unbalanced or unquoted value is returned
+/// as-is. Only one layer is removed (matches a single shell parse pass).
+fn unquote_one_layer(value: &str) -> &str {
+    let bytes = value.as_bytes();
+    if bytes.len() >= 2 {
+        let first = bytes[0];
+        let last = bytes[bytes.len() - 1];
+        if (first == b'"' && last == b'"') || (first == b'\'' && last == b'\'') {
+            return &value[1..value.len() - 1];
+        }
+    }
+    value
 }
 
 /// Tokenize a chain segment into an argv for rule resolution + TUI check (D-08,
