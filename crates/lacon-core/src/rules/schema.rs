@@ -240,7 +240,11 @@ pub struct CollapseArgs {
     pub pattern: String,
     /// How many example lines to emit before suppressing.
     pub max_kept: usize,
-    /// Summary template with `{count}` placeholder.
+    /// Deprecated free-form summary template (Phase 9). Still accepted for
+    /// backward compatibility so existing rules continue to parse, but its value
+    /// is never emitted — collapsed runs always use the fixed
+    /// `[lacon: collapsed N lines]` marker. Optional; defaults to empty.
+    #[serde(default)]
     pub summary: String,
 }
 

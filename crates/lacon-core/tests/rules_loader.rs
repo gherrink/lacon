@@ -247,3 +247,25 @@ pipeline:
         "expected ParseError with 'must be > 0', got {err:?}"
     );
 }
+
+#[test]
+fn collapse_repeated_without_summary_loads() {
+    // CR-01: the spec (filter-rule-schema.md:140) instructs rules to DROP the
+    // deprecated `summary` key. `summary` is `#[serde(default)]`, so a
+    // `collapse_repeated` stage with NO `summary:` must load successfully.
+    let rule_yaml = r#"id: collapse-no-summary
+match:
+  command: echo
+pipeline:
+  - collapse_repeated:
+      pattern: '^Progress:'
+      max_kept: 1
+"#;
+    let tmp = setup_project_with_rules(&[("collapse_no_summary.yaml", rule_yaml)]);
+    let mut loader = RuleLoader::new(Some(tmp.path().to_owned()));
+    let resolved = loader
+        .resolve("collapse-no-summary")
+        .expect("collapse_repeated without summary must load");
+    // collapse_repeated + implicit MaxBytes = 2 stages.
+    assert_eq!(resolved.success_pipeline.stage_count(), 2);
+}
