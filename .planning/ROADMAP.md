@@ -19,7 +19,7 @@ Greenfield Rust project. v1 ships in six phases: build the streaming engine and 
 - [x] **Phase 6: v1 ship gate — acceptance & docs** - End-to-end acceptance validation (cold start, hot reload, `pnpm` E2E, `explain` reproducibility, hermetic test coverage) plus README, worked example, and primitive reference (completed 2026-05-22)
 - [x] **Phase 7: Close gap: capture raw output on opt-in so lacon explain works end-to-end** - Capture pre-filter bytes when `store_raw_outputs` is enabled so `lacon explain <id>` reproduces real invocations end-to-end, not just hand-seeded rows (added 2026-05-22 from v1.0 milestone audit, gaps_found) (completed 2026-05-22)
 - [x] **Phase 8: Redesign `lacon stats` output (ADR 0014)** - Read-time presentation layer for `lacon stats` (overall headline, project rollup, top-N capping, clarified columns); no schema migration (completed 2026-05-23)
-- [ ] **Phase 9: Output-fidelity safety — no fabrication on dedupe/collapse and guaranteed `LACON_DISABLE` bypass** - Never substitute/fabricate filtered lines; preserve tabular/repeated signal; reliable inline `LACON_DISABLE=1` byte-exact passthrough (added 2026-05-31 from v1.0 validation feedback)
+- [x] **Phase 9: Output-fidelity safety — no fabrication on dedupe/collapse and guaranteed `LACON_DISABLE` bypass** - Never substitute/fabricate filtered lines; preserve tabular/repeated signal; reliable inline `LACON_DISABLE=1` byte-exact passthrough (added 2026-05-31 from v1.0 validation feedback) (completed 2026-05-31)
 
 ## Phase Details
 
@@ -173,7 +173,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 5 (bundl
 | 6. v1 ship gate — acceptance & docs | 3/3 | Complete    | 2026-05-22 |
 | 7. Close gap: lacon explain raw-capture | 1/1 | Complete   | 2026-05-22 |
 | 8. Redesign lacon stats output (ADR 0014) | 3/3 | Complete   | 2026-05-23 |
-| 9. Output-fidelity safety — no fabrication, reliable bypass | 2/3 | In Progress|  |
+| 9. Output-fidelity safety — no fabrication, reliable bypass | 3/3 | Complete   | 2026-05-31 |
 
 ### Phase 7: Close gap: capture raw output on opt-in so lacon explain works end-to-end
 
@@ -208,7 +208,7 @@ Plans:
 **Goal:** lacon never substitutes or fabricates content when filtering, and `LACON_DISABLE=1` is a hard guarantee of byte-exact passthrough on the Claude Code Bash hot path. Structurally-similar lines (aligned/tabular output, repeated-prefix loops, grep hits) are treated as signal: `dedupe`/`collapse_repeated` must drop with an explicit, visible elision marker — never replace a line with a placeholder token (e.g. the observed `table table table`) or invent plausible-but-false text. (Reproduced live during v1.0 validation, 2026-05-31: filtered Bash output returned substituted/fabricated rows and inline `LACON_DISABLE=1 <cmd>` failed to bypass.)
 **Requirements**: REQ-engine-bypass (byte-exact passthrough guarantee), REQ-adapter-bypass-detection (reliable inline `LACON_DISABLE=1` env-prefix detection in the PreToolUse hook), REQ-engine-streaming-primitives (`dedupe`/`collapse_repeated` must never substitute or fabricate — elide explicitly or preserve)
 **Depends on:** Phase 8
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 **Success Criteria** (what must be TRUE):
 
@@ -224,4 +224,4 @@ Plans:
 
 **Wave 2** *(blocked on 09-02 — fixtures encode the new marker)*
 
-- [ ] 09-03-PLAN.md — git-status re-audit: remove signal-collapsing stage + regenerate/add fixtures (D-08, D-11, Open Q1/Q2) + confirm tsc dedupe fixture (D-10) + update filter-rule-schema.md marker contract (D-12)
+- [x] 09-03-PLAN.md — git-status re-audit: remove signal-collapsing stage + regenerate/add fixtures (D-08, D-11, Open Q1/Q2) + confirm tsc dedupe fixture (D-10) + update filter-rule-schema.md marker contract (D-12)
