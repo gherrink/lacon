@@ -210,15 +210,21 @@ merged with the earlier ones — only consecutive duplicates collapse.
 ## `collapse_repeated`
 
 Collapses a consecutive run of lines that all match `pattern` into `max_kept` example
-lines plus one summary line. The `summary` template's `{count}` placeholder is replaced
-with the number of dropped lines.
+lines plus exactly one fixed elision marker of the form `[lacon: collapsed N lines]`,
+where `N` is the number of dropped lines.
 
 ```yaml
 - collapse_repeated:
     pattern: '^Progress: \d+%'
     max_kept: 1
-    summary: '… {count} progress lines'
 ```
+
+> **Deprecated `summary` key:** earlier drafts accepted a free-form `summary:`
+> template with a `{count}` placeholder. As of v1 (Phase 9) that template is **no
+> longer emitted** — the dropped run is always replaced by the fixed
+> `[lacon: collapsed N lines]` marker. The `summary` key is still accepted for
+> backward compatibility (rules carrying it continue to parse) but its value is
+> ignored; rules should drop it. See `docs/specs/filter-rule-schema.md`.
 
 **Input** (200 consecutive progress lines, then a final line):
 
@@ -235,13 +241,13 @@ Done
 
 ```
 Progress: 1%
-… 199 progress lines
+[lacon: collapsed 199 lines]
 Done
 ```
 
 The first matching line (`Progress: 1%`) is kept (`max_kept: 1`); the remaining 199
-matching lines are replaced by the summary `… 199 progress lines` (`{count}` → `199`);
-the non-matching `Done` passes through unchanged.
+matching lines are replaced by the fixed marker `[lacon: collapsed 199 lines]`; the
+non-matching `Done` passes through unchanged.
 
 ---
 
