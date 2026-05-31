@@ -84,3 +84,7 @@ None — plan executed exactly as written. The byte-exact backstop assertion did
 ## Out-of-Scope Observations (not fixed)
 
 Pre-existing clippy warnings observed in unrelated locations (NOT touched, logged here only): `lacon-core` collapsible-if (`runtime/mod.rs`), manual case-insensitive ASCII comparison, `&PathBuf`-instead-of-`&Path`, doc list overindent; `lacon-cli` `tracking_e2e` test warning; `test_emitter` missing-lib-target dep note. All pre-existing and outside this plan's scope.
+
+## Self-Check: PASSED
+
+All modified files and all four commits (`4e65ba6` test/RED, `33318f6` feat/GREEN, `6b17d8e` test/Task 2, `e8448ff` docs) verified present.

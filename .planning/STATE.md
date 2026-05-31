@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-05-31T06:05:00.796Z"
-last_activity: 2026-05-31 -- Phase 09 execution started
+last_updated: "2026-05-31T06:11:24.312Z"
+last_activity: 2026-05-31
 progress:
   total_phases: 9
   completed_phases: 8
   total_plans: 42
-  completed_plans: 39
+  completed_plans: 40
   percent: 89
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Phase: 09 (Output-fidelity safety — no fabrication on dedupe/collapse and guaranteed LACON_DISABLE bypass) — EXECUTING
-Plan: 1 of 3
-Status: Executing Phase 09
-Last activity: 2026-05-31 -- Phase 09 execution started
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-05-31
 
-Progress: [█████████░] 89%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
@@ -81,6 +81,7 @@ Progress: [█████████░] 89%
 | Phase 08 P01 | 6min | 2 tasks | 2 files |
 | Phase 08 P02 | 8min | 2 tasks | 1 files |
 | Phase 08 P03 | 6min | 3 tasks | 4 files |
+| Phase 09 P01 | 5min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -160,6 +161,7 @@ Full decision log lives in PROJECT.md "Key Decisions" (13 LOCKED ADRs). Recent d
 - [Phase 08]: [Phase 08 PLAN-01]: overall_totals/filtered_overall_totals readers added behind lacon-core::tracking::query (D-02); scalar COALESCE(SUM,0) + query_row over bypassed=0 base table, no v_overall view/migration/field rename (D-01 fence); ?N placeholder binds (T-08-02), no rule_id predicate so headline spans matched+unmatched (D-05)
 - [Phase ?]: [Phase 08 PLAN-02]: stats presentation helpers added as private fns in commands/stats.rs (D-04) — humanize_bytes (decimal-SI, D-13), is_ephemeral/ephemeral_prefixes (component-wise Path::starts_with, D-08), resolve_repo_root (.git dir/worktree/submodule via bounded fs reads, no git subprocess, no canonicalize, D-09/D-10), canonical_project_key (precedence ephemeral->repo-root->literal, D-07); #[allow(dead_code)] until 08-03 wires call sites; execute signature unchanged; 8 new inline tests incl. /tmpfoo negative + 3 literal-fallback branches
 - [Phase ?]: [Phase 08 PLAN-03]: lacon stats wired to ADR 0014 read-time presentation — headline FIRST (runs, canonical project count = rolled.len() not SQL distinct, raw→kept, saved abs+%, D-05); Rust-side project rollup under canonical_project_key + sort_by_key(Reverse) DESC (D-06); TOP_N=10 cap + '… M more' hint via generic print_capped, --all uncaps (D-11/D-12); render closure humanizes bytes, --bytes exact ints (D-14); relabeled headers/columns kept+'saved %' (D-15); no migration/view/field rename (D-01/D-15 fence); empty-DB→0 + bad --since→2 preserved (D-03)
+- [Phase ?]: Phase 09-01: inline LACON_DISABLE=1 env-prefix bypass added to detect_bypass (inline_disable_bypass leading-assignment scan, breaks at command word per D-04, one-layer unquote + exact-1 match). Byte-exact run_bypassed backstop locked in cli_run via assert_cmd.
 
 ### Pending Todos
 
@@ -192,6 +194,6 @@ None blocking. Three deferred-to-prototyping open questions assigned to phases a
 
 ## Session Continuity
 
-Last session: 2026-05-31T05:38:15.010Z
-Stopped at: Phase 9 context gathered (assumptions mode)
-Resume file: .planning/phases/09-output-fidelity-safety-no-fabrication-on-dedupe-collapse-and/09-CONTEXT.md
+Last session: 2026-05-31T06:11:24.306Z
+Stopped at: Completed 09-01-PLAN.md
+Resume file: None
