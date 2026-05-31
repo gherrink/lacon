@@ -37,9 +37,13 @@ pub enum HookOutcome {
 ///   `starts_with("!!")`.
 /// - **D-01..D-04 inline `LACON_DISABLE=1` env-prefix:** a leading shell
 ///   assignment `LACON_DISABLE=1` (or `"1"`/`'1'`) on the command STRING bypasses.
-///   This is the agent's only usable escape hatch — `!!` cannot be typed inside
-///   Claude Code's Bash tool, so inline `LACON_DISABLE=1` is the sole way to turn
-///   filtering off from inside an agent turn. See [`inline_disable_bypass`].
+///   This is the agent's primary usable escape hatch — `!!` cannot be typed
+///   inside Claude Code's Bash tool, so a leading inline `LACON_DISABLE=1`
+///   assignment is the way to turn filtering off from inside an agent turn. Only
+///   the bare `NAME=value` assignment prefix on the FIRST shell statement is
+///   recognized: `export LACON_DISABLE=1` and other builtin-prefixed forms are
+///   NOT recognized escape hatches (they fail safe toward filtering, not
+///   bypass). See [`inline_disable_bypass`].
 /// - **D-24 process-env `LACON_DISABLE=1`:** the env var equals the exact string
 ///   `"1"`. Mirrors the engine precedent at
 ///   `crates/lacon-core/src/runtime/mod.rs:191` (`as_deref() == Ok("1")`) — other
@@ -72,11 +76,28 @@ fn detect_bypass(command: &str) -> bool {
 /// it equals exactly `"1"` — matching the locked engine `as_deref() == Ok("1")`
 /// semantics (`1`, `"1"`, `'1'` bypass; `0`/`true`/empty do not).
 ///
+/// The scan is scoped to the FIRST shell statement only: `split_whitespace`
+/// collapses `\n`/`\r`/`;`/`&`/`|` into mere token boundaries, so a multi-line or
+/// chained input like `"FOO=bar\nLACON_DISABLE=1 rm -rf /"` would otherwise be
+/// read as one assignment prefix and bypass the WHOLE input — even though a real
+/// shell treats `LACON_DISABLE=1 rm -rf /` as a separate command the user never
+/// prefixed. We truncate at the first statement boundary before scanning so only
+/// the first statement's leading assignments are considered (matching shell
+/// statement semantics and `chain.rs`'s segmentation intent).
+///
 /// Deliberately a cheap, allocation-light leading scan over `split_whitespace`
 /// (no full POSIX assignment grammar) to respect the ≤10ms cold-start budget
 /// (T-09-02 DoS mitigation).
 fn inline_disable_bypass(command: &str) -> bool {
-    for token in command.split_whitespace() {
+    // Scope to the first shell statement: stop at the first statement-terminating
+    // byte (`\n`/`\r`/`;`/`&`/`|`). A trailing assignment after such a boundary
+    // belongs to a separate command, not this command's assignment prefix.
+    let first_stmt_end = command
+        .find(|c| matches!(c, '\n' | '\r' | ';' | '&' | '|'))
+        .unwrap_or(command.len());
+    let first_stmt = &command[..first_stmt_end];
+
+    for token in first_stmt.split_whitespace() {
         let Some((name, value)) = split_leading_assignment(token) else {
             // First non-assignment token is the command word — stop (D-04).
             break;
@@ -107,9 +128,13 @@ fn split_leading_assignment(token: &str) -> Option<(&str, &str)> {
     Some((name, &token[eq + 1..]))
 }
 
-/// Strip exactly one balanced layer of surrounding single or double quotes from
-/// `value`. `"1"` and `'1'` → `1`; an unbalanced or unquoted value is returned
-/// as-is. Only one layer is removed (matches a single shell parse pass).
+/// Strip exactly one fully-surrounding matched-delimiter pair (the first and last
+/// byte are both `"` or both `'`) from `value`. `"1"` and `'1'` → `1`; an
+/// unbalanced or unquoted value is returned as-is. This recognizes ONLY a single
+/// outermost matched-delimiter pair and makes NO claim of shell-accurate quote
+/// parsing — interior quotes, escapes, and mixed/adjacent quoting are not
+/// interpreted. It is sufficient here because the result is only ever compared
+/// against the literal `"1"`, so every divergence fails safe (no bypass).
 fn unquote_one_layer(value: &str) -> &str {
     let bytes = value.as_bytes();
     if bytes.len() >= 2 {
@@ -529,6 +554,21 @@ mod tests {
         std::env::remove_var("LACON_DISABLE");
         assert!(detect_bypass("FOO=bar LACON_DISABLE=1 echo hi"));
         assert!(!detect_bypass("FOO=bar echo hi"));
+    }
+
+    #[test]
+    fn detect_bypass_inline_scoped_to_first_statement() {
+        // WR-02: the leading-assignment scan must be scoped to the FIRST shell
+        // statement. A `LACON_DISABLE=1` that begins a SECOND statement (after a
+        // newline / `;` / `&` / `|`) is a separate command the user never
+        // prefixed — it must NOT whole-input bypass. The first statement here
+        // (`FOO=bar`) is a pure-assignment statement with no LACON_DISABLE=1.
+        let _g = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::remove_var("LACON_DISABLE");
+        assert!(!detect_bypass("FOO=bar\nLACON_DISABLE=1 rm -rf /"));
+        assert!(!detect_bypass("FOO=bar; LACON_DISABLE=1 echo hi"));
+        // A genuine leading assignment on the first statement still bypasses.
+        assert!(detect_bypass("LACON_DISABLE=1 echo hi\nrm -rf /"));
     }
 
     // --- argv_for_resolution tokenizer unit tests (D-08 revised) ---
