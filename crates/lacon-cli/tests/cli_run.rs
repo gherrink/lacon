@@ -147,6 +147,54 @@ pipeline:
     // the bypass flag at the API level.
 }
 
+/// 09-01 success-criterion #2 (engine byte-exact backstop, D-05): with
+/// `LACON_DISABLE=1` in the process env, `lacon run` takes the `run_bypassed`
+/// path (`Stdio::inherit`) and must emit stdout BYTE-IDENTICAL to running the
+/// same command with no `lacon` wrapper at all. The bypassed subprocess inherits
+/// `lacon`'s stdout, which `assert_cmd` connects to a capture pipe — so the bytes
+/// ARE observable here (the prior `run_lacon_disable_bypasses_filtering` test's
+/// exit-code-only comment was conservative). A `drop_regex: '.*'` rule would wipe
+/// ALL output if the pipeline ran, so byte-identical proves filtering was skipped.
+#[test]
+fn run_lacon_disable_is_byte_exact_passthrough() {
+    let dir = tempdir().unwrap();
+    write_rule(
+        dir.path(),
+        r#"
+id: filter
+match: { command: sh }
+pipeline:
+  - drop_regex: '.*'  # would drop EVERYTHING if the pipeline ran
+"#,
+    );
+    let argv = ["/bin/sh", "-c", "printf 'line1\\nline2\\n'; echo skip"];
+
+    // Raw: run the command directly, no lacon wrapper — the reference bytes.
+    let raw = std::process::Command::new(argv[0])
+        .args(&argv[1..])
+        .output()
+        .expect("raw command runs");
+
+    // Bypassed: same command under `lacon run` with LACON_DISABLE=1.
+    let bypassed = Command::cargo_bin("lacon")
+        .unwrap()
+        .current_dir(dir.path())
+        .env("XDG_DATA_HOME", dir.path())
+        .env("LACON_DISABLE", "1")
+        .args(["run", "--rule", "filter", "--"])
+        .args(argv)
+        .output()
+        .expect("lacon run (bypassed) runs");
+
+    assert!(bypassed.status.success());
+    assert_eq!(
+        bypassed.stdout, raw.stdout,
+        "LACON_DISABLE=1 bypass stdout must be byte-identical to the raw command"
+    );
+    // Sanity: the rule WOULD have dropped everything if it had run.
+    assert!(!bypassed.stdout.is_empty(), "bypass must NOT drop output");
+}
+
 #[test]
 fn run_on_error_swap_filters_failed_command_output() {
     let dir = tempdir().unwrap();

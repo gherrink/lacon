@@ -200,6 +200,81 @@ fn bypass_via_lacon_disable_env_emits_empty_stdout() {
     );
 }
 
+/// REQ-adapter-bypass-detection (09-01, D-01..D-04): an INLINE `LACON_DISABLE=1`
+/// env-prefix ON THE COMMAND STRING (no process-env var) produces empty stdout +
+/// exit 0 — the hook returns PassThrough before any wrap (Open Q3: the hook never
+/// emits the command's stdout on bypass, so empty stdout = no rewrite = the
+/// hook-level proof). This is the agent's only escape hatch since `!!` is
+/// unusable from inside Claude Code's Bash tool.
+#[test]
+fn inline_lacon_disable_prefix_passes_through() {
+    let dir = tempfile::tempdir().unwrap();
+    write_rule(dir.path(), ECHO_RULE); // would match, but inline bypass wins
+    let payload = bash_payload(&dir.path().to_string_lossy(), "LACON_DISABLE=1 echo hi");
+    // NO process-env LACON_DISABLE — the bypass must come from the command string.
+    let output = run_hook_with_input(&payload);
+    assert!(output.status.success(), "exit 0 expected");
+    assert!(
+        output.stdout.is_empty(),
+        "empty stdout expected on inline LACON_DISABLE=1 bypass (no rewrite), got {:?}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+/// 09-01 quoting variant: `LACON_DISABLE='1'` inline prefix bypasses too (one
+/// balanced quote layer unquoted to the exact "1" value).
+#[test]
+fn inline_lacon_disable_prefix_quoted_passes_through() {
+    let dir = tempfile::tempdir().unwrap();
+    write_rule(dir.path(), ECHO_RULE);
+    let payload = bash_payload(&dir.path().to_string_lossy(), "LACON_DISABLE='1' echo hi");
+    let output = run_hook_with_input(&payload);
+    assert!(output.status.success());
+    assert!(
+        output.stdout.is_empty(),
+        "empty stdout expected on inline LACON_DISABLE='1' bypass, got {:?}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+/// 09-01 chain variant (CON-chained-bypass-whole-command): an inline
+/// `LACON_DISABLE=1` prefix bypasses the WHOLE command — even a chain — at
+/// whole-command granularity, NOT per-segment. The bypass fires before
+/// `split_chain`, so neither `echo a` nor `echo b` is wrapped.
+#[test]
+fn inline_lacon_disable_prefix_bypasses_whole_chain() {
+    let dir = tempfile::tempdir().unwrap();
+    write_rule(dir.path(), ECHO_RULE);
+    let payload = bash_payload(
+        &dir.path().to_string_lossy(),
+        "LACON_DISABLE=1 echo a && echo b",
+    );
+    let output = run_hook_with_input(&payload);
+    assert!(output.status.success());
+    assert!(
+        output.stdout.is_empty(),
+        "empty stdout expected — inline bypass is whole-command, got {:?}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+/// 09-01 negative (D-04): a NON-leading `LACON_DISABLE=1` (it is an argument to
+/// `echo`, not a leading assignment) must NOT bypass — the `echo` command still
+/// matches the rule and gets wrapped (non-empty rewrite stdout).
+#[test]
+fn non_leading_lacon_disable_does_not_bypass() {
+    let dir = tempfile::tempdir().unwrap();
+    write_rule(dir.path(), ECHO_RULE);
+    let payload = bash_payload(&dir.path().to_string_lossy(), "echo LACON_DISABLE=1");
+    let output = run_hook_with_input(&payload);
+    assert!(output.status.success());
+    let cmd = updated_command(&output);
+    assert!(
+        cmd.contains("lacon run --rule echo-rule"),
+        "non-leading LACON_DISABLE=1 must NOT bypass; expected wrap, got: {cmd}"
+    );
+}
+
 /// REQ-adapter-tui-bypass, T-03-04-03 (T-tui-whole-chain): a TUI segment anywhere
 /// in the chain forces the WHOLE chain to bypass — the matched `ls` segment is
 /// NOT wrapped because `vim` triggers the bypass (D-15).
