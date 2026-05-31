@@ -173,7 +173,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 5 (bundl
 | 6. v1 ship gate — acceptance & docs | 3/3 | Complete    | 2026-05-22 |
 | 7. Close gap: lacon explain raw-capture | 1/1 | Complete   | 2026-05-22 |
 | 8. Redesign lacon stats output (ADR 0014) | 3/3 | Complete   | 2026-05-23 |
-| 9. Output-fidelity safety — no fabrication, reliable bypass | 1/3 | In Progress|  |
+| 9. Output-fidelity safety — no fabrication, reliable bypass | 2/3 | In Progress|  |
 
 ### Phase 7: Close gap: capture raw output on opt-in so lacon explain works end-to-end
 
@@ -208,7 +208,7 @@ Plans:
 **Goal:** lacon never substitutes or fabricates content when filtering, and `LACON_DISABLE=1` is a hard guarantee of byte-exact passthrough on the Claude Code Bash hot path. Structurally-similar lines (aligned/tabular output, repeated-prefix loops, grep hits) are treated as signal: `dedupe`/`collapse_repeated` must drop with an explicit, visible elision marker — never replace a line with a placeholder token (e.g. the observed `table table table`) or invent plausible-but-false text. (Reproduced live during v1.0 validation, 2026-05-31: filtered Bash output returned substituted/fabricated rows and inline `LACON_DISABLE=1 <cmd>` failed to bypass.)
 **Requirements**: REQ-engine-bypass (byte-exact passthrough guarantee), REQ-adapter-bypass-detection (reliable inline `LACON_DISABLE=1` env-prefix detection in the PreToolUse hook), REQ-engine-streaming-primitives (`dedupe`/`collapse_repeated` must never substitute or fabricate — elide explicitly or preserve)
 **Depends on:** Phase 8
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 **Success Criteria** (what must be TRUE):
 
@@ -220,7 +220,7 @@ Plans:
 **Wave 1** *(parallel — no file overlap)*
 
 - [x] 09-01-PLAN.md — Inline `LACON_DISABLE=1` env-prefix parser in `detect_bypass` (D-01..D-04) + hook-e2e inline-prefix passthrough + engine byte-exact `run_bypassed` backstop assertion (D-05)
-- [ ] 09-02-PLAN.md — Standardize `collapse_repeated` elision marker to `[lacon: …]` at both in-run + flush sites (D-06, D-07, D-09); dedupe verified verbatim-only
+- [x] 09-02-PLAN.md — Standardize `collapse_repeated` elision marker to `[lacon: …]` at both in-run + flush sites (D-06, D-07, D-09); dedupe verified verbatim-only
 
 **Wave 2** *(blocked on 09-02 — fixtures encode the new marker)*
 
