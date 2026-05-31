@@ -405,6 +405,59 @@ mod tests {
         assert!(!detect_bypass("echo hi"));
     }
 
+    // --- inline LACON_DISABLE=1 env-prefix scan (D-01..D-04) ---
+
+    #[test]
+    fn detect_bypass_inline_lacon_disable_unquoted() {
+        // A leading `LACON_DISABLE=1` assignment on the command string bypasses,
+        // independent of the process env (this is the agent's only escape hatch
+        // since `!!` is unusable from inside the Bash tool).
+        let _g = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::remove_var("LACON_DISABLE");
+        assert!(detect_bypass("LACON_DISABLE=1 echo hi"));
+    }
+
+    #[test]
+    fn detect_bypass_inline_lacon_disable_quoting_variants() {
+        // Both `"1"` and `'1'` unquote one balanced layer to the exact "1" value.
+        let _g = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::remove_var("LACON_DISABLE");
+        assert!(detect_bypass("LACON_DISABLE=\"1\" echo hi"));
+        assert!(detect_bypass("LACON_DISABLE='1' echo hi"));
+    }
+
+    #[test]
+    fn detect_bypass_inline_lacon_disable_leading_position_only() {
+        // D-04: a non-leading occurrence is NOT an assignment prefix — `echo` is
+        // the command word, so the scan breaks there and never sees the literal
+        // `LACON_DISABLE=1` argument. Must still filter (no bypass).
+        let _g = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::remove_var("LACON_DISABLE");
+        assert!(!detect_bypass("echo LACON_DISABLE=1"));
+    }
+
+    #[test]
+    fn detect_bypass_inline_lacon_disable_non_one_values() {
+        // Only the exact unquoted value "1" bypasses (mirrors the locked engine
+        // `as_deref() == Ok("1")` rule). `0`, `true`, empty → no bypass.
+        let _g = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::remove_var("LACON_DISABLE");
+        assert!(!detect_bypass("LACON_DISABLE=0 echo hi"));
+        assert!(!detect_bypass("LACON_DISABLE=true echo hi"));
+        assert!(!detect_bypass("LACON_DISABLE= echo hi"));
+    }
+
+    #[test]
+    fn detect_bypass_inline_skips_other_leading_assignments() {
+        // A leading assignment with a different name does not bypass, but the scan
+        // continues PAST it to find a later LACON_DISABLE=1 (still in assignment
+        // prefix position, before the command word).
+        let _g = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::remove_var("LACON_DISABLE");
+        assert!(detect_bypass("FOO=bar LACON_DISABLE=1 echo hi"));
+        assert!(!detect_bypass("FOO=bar echo hi"));
+    }
+
     // --- argv_for_resolution tokenizer unit tests (D-08 revised) ---
 
     #[test]
