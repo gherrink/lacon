@@ -87,14 +87,17 @@ pub enum Stage {
         kept_so_far: usize,
     },
 
-    /// Collapses consecutive lines matching `pattern` into `max_kept` examples plus
-    /// a summary line. `{count}` in `summary_template` is replaced with the total
-    /// number of dropped lines (NOT including the emitted examples).
+    /// Collapses consecutive lines matching `pattern` into `max_kept` examples
+    /// followed by the fixed `[lacon: collapsed N lines]` elision marker, where
+    /// `N` is the number of dropped lines (NOT including the emitted examples).
     ///
     /// # Fields
     /// - `pattern`: lines matching this are collapsed
     /// - `max_kept`: how many examples to emit before suppressing
-    /// - `summary_template`: template with `{count}` placeholder
+    /// - `summary_template`: retained ONLY for backward-compatible YAML parsing
+    ///   (the loader populates it from the deprecated `summary:` key) and is
+    ///   NEVER emitted — `step()`/`flush()` always emit the fixed marker instead
+    ///   (D-09). Mirrors the inline note at the flush site below.
     /// - `kept_so_far`: examples emitted in the current run
     /// - `dropped`: lines suppressed (not emitted) in the current run
     CollapseRepeated {
@@ -710,6 +713,29 @@ mod tests {
                 "emitted non-marker line {emitted:?} is not byte-identical to any input line"
             );
         }
+    }
+
+    #[test]
+    fn collapse_repeated_marker_format() {
+        // IN-03: pin the exact collapse marker string (mirrors
+        // `max_bytes_truncation_marker_format`). The spec (filter-rule-schema.md:136)
+        // makes `[lacon: collapsed N lines]` a stability contract, so this guards
+        // against whitespace / pluralization drift.
+        //
+        // N=1 case: note the marker is NOT pluralized ("1 lines"). This is
+        // intentional for v1 — the marker is a fixed format string and existing
+        // tests / consumers assert the literal `[lacon: collapsed N lines]` form.
+        let pattern = Regex::new(r"^P:").unwrap();
+        let mut s = Stage::CollapseRepeated {
+            pattern,
+            max_kept: 1,
+            summary_template: String::new(),
+            kept_so_far: 0,
+            dropped: 0,
+        };
+        // 1 kept, 1 dropped → N=1.
+        let out = run_stage(&mut s, &["P: a", "P: b", "Done"]);
+        assert_eq!(out, vec!["P: a", "[lacon: collapsed 1 lines]", "Done"]);
     }
 
     // ── KeepHead ─────────────────────────────────────────────────────────────
