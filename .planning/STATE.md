@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: milestone_complete
-stopped_at: Milestone complete (Phase 08 was final phase)
-last_updated: 2026-05-23T14:50:00.515Z
-last_activity: 2026-05-23
+status: executing
+last_updated: "2026-05-31T05:38:15.016Z"
+last_activity: 2026-05-31
 progress:
-  total_phases: 8
+  total_phases: 9
   completed_phases: 8
   total_plans: 39
   completed_plans: 39
-  percent: 100
+  percent: 89
 ---
 
 # Project State
@@ -21,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-06)
 
 **Core value:** Reduce the bytes an AI coding assistant ingests from bash output by 30–70% without dropping signal — locally, with sub-10ms cold start, and a YAML rule per command.
-**Current focus:** Milestone complete
+**Current focus:** Phase 9 — output-fidelity safety (no fabrication; reliable `LACON_DISABLE` bypass)
 
 ## Current Position
 
-Phase: 08
-Plan: Not started
-Status: Milestone complete
-Last activity: 2026-05-23
+Phase: 09
+Plan: Not planned yet
+Status: In progress (v1.0 reopened for Phase 9)
+Last activity: 2026-05-31
 
-Progress: [██████████] 100%
+Progress: [█████████░] 89%
 
 ## Performance Metrics
 
@@ -89,6 +88,7 @@ Progress: [██████████] 100%
 
 - Phase 7 added: Close gap: capture raw output on opt-in so lacon explain works end-to-end (from v1.0 milestone audit gaps_found)
 - Phase 8 added: Redesign lacon stats output for readability (ADR 0014) — read-time presentation layer (project rollup, top-N capping, clarified columns); follows the stats tracking-hygiene fix (test XDG leak + DB purge)
+- Phase 9 added: Output-fidelity safety — dedupe/collapse must never substitute or fabricate lines (preserve tabular/repeated-prefix signal), and inline `LACON_DISABLE=1` must guarantee byte-exact passthrough (from v1.0 post-ship validation feedback, 2026-05-31)
 
 ### Decisions
 
@@ -192,6 +192,6 @@ None blocking. Three deferred-to-prototyping open questions assigned to phases a
 
 ## Session Continuity
 
-Last session: 2026-05-23T14:27:52.969Z
-Stopped at: Completed 08-02-PLAN.md
-Resume file: None
+Last session: 2026-05-31T05:38:15.010Z
+Stopped at: Phase 9 context gathered (assumptions mode)
+Resume file: .planning/phases/09-output-fidelity-safety-no-fabrication-on-dedupe-collapse-and/09-CONTEXT.md
