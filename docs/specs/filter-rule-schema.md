@@ -137,6 +137,8 @@ When a run of matching lines is collapsed, the dropped lines are replaced by exa
 
 The marker is a fixed lacon-namespaced line by design: it can never inherit the formatting of the lines it replaces (e.g. a tab-indented file-block summary that visually blends into real tool output), so a collapsed run is never mistaken for, or substituted by, a plausible-but-fabricated tool line. Every surviving (non-marker) line `collapse_repeated` emits is byte-identical to an input line.
 
+The textual `[lacon: …]` marker is **advisory**, not a trusted signal: lacon carries no sentinel distinguishing its own marker lines from passthrough lines, so tool output can coincidentally reproduce a byte-identical `[lacon: collapsed N lines]` line. Consumers (including the model) must not treat the marker's mere presence as a lacon-only signal. A trusted side-band channel is tracked as backlog if one is ever needed.
+
 > **Contract change (v1, Phase 9):** earlier drafts of this primitive accepted a free-form `summary:` template with a `{count}` placeholder that was emitted verbatim in place of the collapsed run. That free-form summary is **no longer emitted** — it is replaced unconditionally by the fixed `[lacon: collapsed N lines]` marker above. The `summary` key is still accepted by the YAML loader for backward compatibility (rules carrying it continue to parse), but its value is ignored at emission time. Rules should drop the key; relying on a custom summary string is unsupported.
 
 **`keep_head: { lines: N }`** or **`keep_head: { bytes: N }`** — keeps only the first N lines / bytes.
