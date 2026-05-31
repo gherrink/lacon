@@ -17,7 +17,15 @@ findings:
   warning: 4
   info: 3
   total: 8
-status: issues_found
+status: resolved
+resolution: >
+  All 7 in-scope findings fixed (commits 0e53133, 17005fe, d347744, 9db49b5,
+  53e8ed3). CR-01 (serde default + loader test), WR-01..WR-04, IN-02, IN-03
+  applied and verified green. IN-01 (Dedupe.kept_so_far) intentionally deferred
+  as pre-existing dead code outside this phase's scope. Note: 3 cli_stats.rs
+  tests show pre-existing intermittent test-isolation flakiness under full
+  parallel `cargo test --workspace` (Phase 8 stats territory, shared tracking DB)
+  — pass reliably in isolation; not introduced by Phase 9.
 ---
 
 # Phase 9: Code Review Report
