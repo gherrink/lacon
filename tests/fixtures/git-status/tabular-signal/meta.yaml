@@ -1,0 +1,26 @@
+command: git status
+exit_code: 0
+tool_version: "git 2.53.0"
+os: linux
+exempt_from_reduction_check: true
+must_keep_lines:
+  - "	new file:   src/gen/table/row_001.rs"
+  - "	new file:   src/gen/table/row_005.rs"
+  - "	renamed:    src/old/legacy_a.rs -> src/new/legacy_a.rs"
+  - "	modified:   src/gen/table/row_001.rs"
+  - "	modified:   src/gen/table/row_005.rs"
+  - "	src/gen/table/row_006.rs"
+  - "	src/gen/table/row_010.rs"
+notes: >-
+  NO-FABRICATION CLASS fixture (success-criteria #1/#3, D-11). Reproduces the
+  fabrication CLASS the git-status collapse bug belonged to — aligned/tabular
+  columns ("new file:" / "modified:" / "renamed: a -> b" status columns) and
+  repeated-prefix loop rows (src/gen/table/row_NNN.rs across the staged,
+  unstaged, and untracked blocks). Per RESEARCH Open Q1 this gates on the CLASS,
+  NOT the literal "table table table" string (that came from a non-git-status
+  loop and is explicitly NOT a gate). Every aligned/repeated-prefix signal line
+  survives VERBATIM after the git-status pipeline (strip_ansi no-op + the three
+  "(use …)" hint drops); no synthetic count line, no [lacon: …] marker (nothing
+  is elided now that collapse_repeated is gone — D-08). exempt_from_reduction_check
+  because tabular per-file signal IS the output (tsc precedent / Open Q2);
+  verbatim survival proven by must_keep_lines.

@@ -1,0 +1,31 @@
+On branch feature/migrate
+Your branch is up to date with 'origin/feature/migrate'.
+
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	new file:   src/gen/table/row_001.rs
+	new file:   src/gen/table/row_002.rs
+	new file:   src/gen/table/row_003.rs
+	new file:   src/gen/table/row_004.rs
+	new file:   src/gen/table/row_005.rs
+	renamed:    src/old/legacy_a.rs -> src/new/legacy_a.rs
+	renamed:    src/old/legacy_b.rs -> src/new/legacy_b.rs
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   src/gen/table/row_001.rs
+	modified:   src/gen/table/row_002.rs
+	modified:   src/gen/table/row_003.rs
+	modified:   src/gen/table/row_004.rs
+	modified:   src/gen/table/row_005.rs
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	src/gen/table/row_006.rs
+	src/gen/table/row_007.rs
+	src/gen/table/row_008.rs
+	src/gen/table/row_009.rs
+	src/gen/table/row_010.rs
+
+no changes added to commit (use "git add" and/or "git commit -a")
