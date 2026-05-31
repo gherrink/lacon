@@ -1,3 +1,3 @@
 Progress: 1%
-… 199 progress lines
+[lacon: collapsed 199 lines]
 Done

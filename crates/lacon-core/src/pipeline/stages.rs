@@ -273,7 +273,7 @@ impl Stage {
             Stage::CollapseRepeated {
                 pattern,
                 max_kept,
-                summary_template,
+                summary_template: _,
                 kept_so_far,
                 dropped,
             } => {
@@ -285,13 +285,20 @@ impl Stage {
                         *dropped += 1;
                     }
                 } else {
-                    // Non-matching line: flush summary if we were in a run, then emit line.
-                    if *kept_so_far > 0 || *dropped > 0 {
-                        let summary = summary_template.replace("{count}", &dropped.to_string());
-                        out.push(Cow::Owned(summary));
-                        *kept_so_far = 0;
-                        *dropped = 0;
+                    // Non-matching line: emit the standardized lacon elision marker
+                    // ONLY when lines were actually suppressed, then emit the line.
+                    //
+                    // D-07 fix: the elision is a fixed `[lacon: …]`-namespaced marker
+                    // modeled on the `MaxBytes` marker below — NOT the free-form
+                    // `summary_template`, which could inherit the elided lines'
+                    // formatting (e.g. a tab-indent) and blend into real tool output.
+                    // The `summary_template` field is retained for YAML deserialization
+                    // (loader populates it) but is no longer emitted (D-09).
+                    if *dropped > 0 {
+                        out.push(Cow::Owned(format!("[lacon: collapsed {} lines]", dropped)));
                     }
+                    *kept_so_far = 0;
+                    *dropped = 0;
                     out.push(line);
                 }
             }
@@ -430,14 +437,14 @@ impl Stage {
             // when the stream ends exactly at max_kept examples with nothing suppressed,
             // `kept_so_far > 0` fires and emits "… 0 <noun>" which is spurious noise.
             Stage::CollapseRepeated {
-                summary_template,
                 kept_so_far,
                 dropped,
                 ..
             } => {
                 if *dropped > 0 {
-                    let summary = summary_template.replace("{count}", &dropped.to_string());
-                    out.push(Cow::Owned(summary));
+                    // D-07: same standardized `[lacon: …]` marker as the in-run path.
+                    // CR-03 guard preserved — emit only when lines were suppressed.
+                    out.push(Cow::Owned(format!("[lacon: collapsed {} lines]", dropped)));
                     *kept_so_far = 0;
                     *dropped = 0;
                 }
@@ -613,7 +620,7 @@ mod tests {
         );
         assert_eq!(
             out,
-            vec!["Progress: 10%", "… 3 progress lines", "Done"]
+            vec!["Progress: 10%", "[lacon: collapsed 3 lines]", "Done"]
         );
     }
 
@@ -632,7 +639,7 @@ mod tests {
             &mut s,
             &["Progress: 10%", "Progress: 20%", "Progress: 30%"],
         );
-        assert_eq!(out, vec!["Progress: 10%", "… 2 progress lines"]);
+        assert_eq!(out, vec!["Progress: 10%", "[lacon: collapsed 2 lines]"]);
     }
 
     #[test]
@@ -655,6 +662,54 @@ mod tests {
             vec!["P: 1", "P: 2"],
             "no summary line should be emitted when dropped == 0 at flush"
         );
+    }
+
+    #[test]
+    fn collapse_repeated_survivors_are_verbatim_input_lines() {
+        // D-09 / T-09-05: every non-marker emitted line must be byte-identical to
+        // an input line. Feed tab-indented (tabular) repeated-prefix input — the
+        // class that previously had a blending tab-indented summary substituted in.
+        let pattern = Regex::new(r"^\t").unwrap();
+        let mut s = Stage::CollapseRepeated {
+            pattern,
+            max_kept: 2,
+            summary_template: "\t… {count} more changed/untracked files".to_owned(),
+            kept_so_far: 0,
+            dropped: 0,
+        };
+        let input = [
+            "On branch main",
+            "\tmodified:   src/a.rs",
+            "\tmodified:   src/b.rs",
+            "\tmodified:   src/c.rs",
+            "\tmodified:   src/d.rs",
+            "nothing to commit",
+        ];
+        let out = run_stage(&mut s, &input);
+
+        // The elision is the standardized lacon marker — NOT a tab-indented
+        // line that blends into the surviving file rows (D-07).
+        assert_eq!(
+            out,
+            vec![
+                "On branch main",
+                "\tmodified:   src/a.rs",
+                "\tmodified:   src/b.rs",
+                "[lacon: collapsed 2 lines]",
+                "nothing to commit",
+            ]
+        );
+
+        // Every non-marker survivor is byte-identical to an input line.
+        for emitted in &out {
+            if emitted.starts_with("[lacon:") {
+                continue;
+            }
+            assert!(
+                input.contains(&emitted.as_str()),
+                "emitted non-marker line {emitted:?} is not byte-identical to any input line"
+            );
+        }
     }
 
     // ── KeepHead ─────────────────────────────────────────────────────────────

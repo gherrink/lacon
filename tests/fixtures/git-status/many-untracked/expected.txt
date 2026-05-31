@@ -8,6 +8,6 @@ Untracked files:
 	README.md
 	src/gen/mod1.rs
 	src/gen/mod10.rs
-	… 118 more changed/untracked files
+[lacon: collapsed 118 lines]
 
 nothing added to commit but untracked files present (use "git add" to track)
