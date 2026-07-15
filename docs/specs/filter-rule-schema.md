@@ -1,242 +1,67 @@
+---
+schema-version: 1
+---
+
 # Filter rule schema
+
+## Goal
 
 Reference for the YAML format that defines filter rules. The implementation must match this document; any change here is a breaking change for users.
 
-## File location
+## Context
 
-Rules can live in three places, in priority order:
+Rules live in three places, in priority order: `<cwd>/.lacon/rules/*.yaml` (highest), `~/.config/lacon/rules/*.yaml`, then bundled (embedded in the binary, lowest). Resolution is first-match-wins with no merging across layers; layering onto a bundled rule is done explicitly via `extends`.
 
-| Priority | Path |
-|----------|------|
-| 1 (highest) | `<cwd>/.lacon/rules/*.yaml` |
-| 2 | `~/.config/lacon/rules/*.yaml` |
-| 3 (lowest) | bundled (embedded in the binary) |
+## Criteria
 
-Resolution is first-match-wins. There is no merging across layers; if you want to layer onto a bundled rule, use `extends`.
+### Top-level structure  {#top-level-structure}
 
-## Top-level structure
+A rule is a YAML map with: `id` (required), `description` (optional), `extends` (optional), `match` (required unless inherited), `bypass_when` (optional), `rewrite` (optional), `pipeline` (required unless inherited), `on_error` (optional), `post_process` (optional).
 
-```yaml
-id: pnpm-install
-description: pnpm/npm/yarn install
-extends: bundled/pkg-install      # optional
+### id  {#id}
 
-match: { ... }                    # required (unless inherited)
-bypass_when: { ... }              # optional
-rewrite: { ... }                  # optional
-pipeline: [ ... ]                 # required (unless inherited)
-on_error: { ... }                 # optional
-post_process: { ... }             # optional
-```
+Required string, unique within a layer, used in tracking, `extends` references, and CLI output. Convention: kebab-case.
 
-## Fields
+### match operators  {#match-operators}
 
-### `id`
+`match` (required unless inherited) determines applicability. Operators: `command` (exact match against the basename of argv[0]), `args_prefix` (argv[1..] must start with these tokens), `args_contain` (argv[1..] includes these tokens in any position), `command_regex` (regex against the full normalized command line), `any` (list of sub-matches, OR semantics), `all` (list of sub-matches, AND semantics).
 
-Required string. Stable identifier used in tracking, in `extends` references, and in CLI output. Must be unique within a layer. Convention: kebab-case.
+### bypass_when  {#bypass-when}
 
-### `description`
+Optional. If it matches, the rule is skipped entirely and raw output passes through. Operators include `has_flag`, `is_tty`, and `env`.
 
-Optional string. Shown in `lacon doctor` and `lacon stats` for human readability.
+### rewrite  {#rewrite}
 
-### `extends`
+Optional; modifies the command before execution, applied only when the adapter supports pre-execution modification (Claude Code via `PreToolUse`). Keys: `add_flags` (idempotent — never adds a flag already present), `remove_flags`, `replace_flags`.
 
-Optional string. References another rule by ID, optionally prefixed with `bundled/`, `user/`, or `project/`. The parent's fields are inherited where this rule doesn't specify them; the parent's pipeline stages are *prepended* to this rule's pipeline. See [Inheritance semantics](#inheritance-semantics) below.
+### pipeline structure  {#pipeline-structure}
 
-### `match`
+Required unless inherited. An ordered list of stages applied to streamed output; each stage is `<primitive>: <args>` or a bare `<primitive>`.
 
-Required (unless inherited). Pattern matcher that determines whether this rule applies to a given command.
+### Native primitives  {#native-primitives}
 
-```yaml
-match:
-  any:                            # OR semantics
-    - { command: pnpm, args_prefix: [install] }
-    - { command: pnpm, args_prefix: [i] }
-  # OR alternative:
-  command_regex: '^(pnpm|npm)\s+(install|i)'
-```
+`strip_ansi` (no args); `drop_regex: <pattern>` (drop matching lines); `keep_regex: <pattern>` (whitelist — if any present, only matching lines kept; multiple are OR'd); `replace_regex: {pattern, replacement}`; `dedupe: {max_kept=1}` (collapse consecutive duplicates); `collapse_repeated: {pattern, max_kept}`; `keep_head: {lines|bytes}`; `keep_tail: {lines|bytes}` (bounded ring buffer); `keep_around_match: {pattern, before, after}` (grep -B/-A semantics); `max_bytes: N` (hard total-size cap, should be the last stage, truncates with a `[lacon: truncated, N more bytes dropped]` marker).
 
-Match operators:
+### collapse_repeated fidelity contract (Phase 9)  {#collapse-repeated-fidelity-contract-phase}
 
-- `command`: exact match against argv[0] basename (so `/usr/local/bin/pnpm` matches `command: pnpm`)
-- `args_prefix`: argv[1..N] must start with these tokens
-- `args_contain`: argv[1..] must include these tokens (any position)
-- `command_regex`: regex against the full normalized command line
-- `any`: list of sub-matches, OR semantics
-- `all`: list of sub-matches, AND semantics (rare)
+When a run of matching lines is collapsed, the dropped lines are replaced by exactly one fixed lacon-namespaced marker `[lacon: collapsed N lines]` (N = lines dropped), emitted both mid-stream when a run ends and at end-of-output flush, and only when at least one line was actually dropped. The marker is a fixed line by design so it can never inherit the formatting of the lines it replaces, and every surviving (non-marker) line is byte-identical to an input line — a collapsed run is never substituted by a plausible-but-fabricated tool line. The marker is advisory, not a trusted sentinel: tool output can coincidentally reproduce a byte-identical marker line, so consumers must not treat its presence as a lacon-only signal. The earlier free-form `summary:` template is no longer emitted — the YAML loader still accepts the `summary` key for backward compatibility, but its value is ignored at emission time and rules should drop it.
 
-### `bypass_when`
+### Starlark stage  {#starlark-stage}
 
-Optional. If matched, rule is skipped entirely (raw output passes through).
+`script: {path, function}` runs a Starlark function on the aggregated output. Signature `def process(ctx, lines) -> list[str]`, where `ctx` exposes `.exit_code`, `.duration_ms`, `.command`, `.args`, `.project_path` and `lines` is the output after preceding stages. Starlark is slow relative to native primitives — use sparingly and place near the end of the pipeline so it runs on already-reduced output.
 
-```yaml
-bypass_when:
-  any:
-    - has_flag: ['--verbose', '-v', '--debug']
-    - is_tty: true
-    - env: { LACON_DEBUG_RULE: '1' }
-```
+### on_error  {#error}
 
-### `rewrite`
+Optional; fully replaces `pipeline` (and optionally `post_process`) when the command exits non-zero. It does not merge. Motivation: failed commands need context, not summary.
 
-Optional. Modifies the command before execution. Only applied if the adapter supports pre-execution modification (Claude Code does via `PreToolUse`).
+### post_process  {#post-process}
 
-```yaml
-rewrite:
-  add_flags: ['--reporter=silent']
-  remove_flags: ['--verbose', '-v']
-  replace_flags:
-    '--progress': '--no-progress'
-```
+Optional Starlark function that runs once on the entire post-pipeline output — equivalent to a final `script:` stage, conventionally placed here for clarity.
 
-`add_flags` is idempotent — won't add a flag that's already present.
+### Inheritance semantics  {#inheritance-semantics}
 
-### `pipeline`
+With `extends: <rule-id>`: fields not defined on the child are inherited from the parent (`description`, `match`, `bypass_when`, `rewrite`, `on_error`, `post_process`); the parent's `pipeline` stages are prepended to the child's; inheritance is single-level, non-cyclic, and flattened at load time. Finer control (insert/remove a stage) requires copying the parent rule and editing it.
 
-Required (unless inherited). Ordered list of stages applied to streamed output. Each stage has the form `<primitive>: <args>` or just `<primitive>` (no args).
+### Validation  {#validation}
 
-#### Native primitives
-
-**`strip_ansi`** — no args. Removes ANSI color and control sequences.
-
-**`drop_regex: <pattern>`** — drops any line matching the regex.
-
-```yaml
-- drop_regex: '^npm warn deprecated'
-```
-
-**`keep_regex: <pattern>`** — whitelist mode. If any `keep_regex` is present, only matching lines are kept. Multiple `keep_regex` stages are OR'd.
-
-```yaml
-- keep_regex: '(error|ERROR|FAIL)'
-```
-
-**`replace_regex: { pattern, replacement }`** — substitutes matched text.
-
-```yaml
-- replace_regex:
-    pattern: '\b/Users/[^/]+/'
-    replacement: '~/'
-```
-
-**`dedupe`** — collapses consecutive duplicate lines. Optional arg: `max_kept` (default 1).
-
-```yaml
-- dedupe: { max_kept: 1 }
-```
-
-**`collapse_repeated: { pattern, max_kept }`** — collapses consecutive lines that all match `pattern` into `max_kept` examples followed by a single standardized elision marker.
-
-```yaml
-- collapse_repeated:
-    pattern: '^Progress: \d+%'
-    max_kept: 1
-```
-
-When a run of matching lines is collapsed, the dropped lines are replaced by exactly one lacon-namespaced marker of the form `[lacon: collapsed N lines]`, where `N` is the number of dropped lines. The marker is emitted both mid-stream (when a run ends) and at end-of-output (flush), and only when at least one line was actually dropped. This mirrors the `max_bytes` `[lacon: truncated, N more bytes dropped]` marker so the elision convention reads consistently across primitives.
-
-The marker is a fixed lacon-namespaced line by design: it can never inherit the formatting of the lines it replaces (e.g. a tab-indented file-block summary that visually blends into real tool output), so a collapsed run is never mistaken for, or substituted by, a plausible-but-fabricated tool line. Every surviving (non-marker) line `collapse_repeated` emits is byte-identical to an input line.
-
-The textual `[lacon: …]` marker is **advisory**, not a trusted signal: lacon carries no sentinel distinguishing its own marker lines from passthrough lines, so tool output can coincidentally reproduce a byte-identical `[lacon: collapsed N lines]` line. Consumers (including the model) must not treat the marker's mere presence as a lacon-only signal. A trusted side-band channel is tracked as backlog if one is ever needed.
-
-> **Contract change (v1, Phase 9):** earlier drafts of this primitive accepted a free-form `summary:` template with a `{count}` placeholder that was emitted verbatim in place of the collapsed run. That free-form summary is **no longer emitted** — it is replaced unconditionally by the fixed `[lacon: collapsed N lines]` marker above. The `summary` key is still accepted by the YAML loader for backward compatibility (rules carrying it continue to parse), but its value is ignored at emission time. Rules should drop the key; relying on a custom summary string is unsupported.
-
-**`keep_head: { lines: N }`** or **`keep_head: { bytes: N }`** — keeps only the first N lines / bytes.
-
-**`keep_tail: { lines: N }`** or **`keep_tail: { bytes: N }`** — keeps only the last N lines / bytes. Implemented as a bounded ring buffer.
-
-**`keep_around_match: { pattern, before, after }`** — for each line matching `pattern`, keep `before` preceding and `after` following lines (grep -B/-A semantics).
-
-```yaml
-- keep_around_match:
-    pattern: '^FAIL '
-    before: 0
-    after: 20
-```
-
-**`max_bytes: N`** — hard cap on total output size. If exceeded, output is truncated with a `[lacon: truncated, N more bytes dropped]` marker. Should always be the last stage.
-
-#### Starlark stage
-
-**`script: { path, function }`** — runs a Starlark function on the aggregated output.
-
-```yaml
-- script:
-    path: scripts/jest_summary.star
-    function: process
-```
-
-The function signature is:
-
-```python
-def process(ctx, lines):
-    """
-    ctx: object with .exit_code, .duration_ms, .command, .args, .project_path
-    lines: list[str] — the output so far, after preceding stages
-    return: list[str] — the output to pass to subsequent stages
-    """
-    ...
-```
-
-Starlark stages are slow relative to native primitives. Use sparingly. For complex per-rule logic, prefer placing the Starlark stage near the end of the pipeline so it operates on already-reduced output.
-
-### `on_error`
-
-Optional. Replaces `pipeline` (and optionally `post_process`) entirely when the command exits non-zero. Does not merge.
-
-```yaml
-on_error:
-  pipeline:
-    - strip_ansi
-    - keep_regex: '(ERR_|error|FAIL)'
-    - keep_tail: { lines: 50 }
-    - max_bytes: 8192
-```
-
-The motivation: failed commands need different filtering than successful ones — when something breaks, you want context, not summary.
-
-### `post_process`
-
-Optional. A Starlark function that runs once on the entire post-pipeline output. Equivalent to a final `script:` stage, but conventionally placed here for clarity.
-
-```yaml
-post_process:
-  path: scripts/pnpm_install.star
-  function: postprocess
-```
-
-## Inheritance semantics
-
-When a rule has `extends: <other-rule-id>`:
-
-1. Fields not defined on this rule are inherited from the parent (`description`, `match`, `bypass_when`, `rewrite`, `on_error`, `post_process`)
-2. The parent's `pipeline` stages are **prepended** to this rule's `pipeline`
-3. Inheritance is single-level and non-cyclic; `extends` chains are flattened at load time
-
-If you need finer control (insert a stage, remove a stage), copy the parent rule and edit it. The simple model is the contract.
-
-## Worked example
-
-```yaml
-# .lacon/rules/our-monorepo-pnpm.yaml
-id: our-monorepo-pnpm
-description: pnpm install in our monorepo (verbose lockfile output we want to strip)
-extends: bundled/pkg-install
-
-# pnpm install in this repo emits 50+ "Lockfile is up to date" lines we don't need
-pipeline:
-  - drop_regex: '^Lockfile is up to date'
-  - drop_regex: '^Already up to date'
-```
-
-This rule:
-
-- Inherits `match`, `rewrite`, `on_error` from `bundled/pkg-install`
-- Runs the bundled pipeline first, then the two extra `drop_regex` stages
-- Wins resolution against `bundled/pkg-install` because project rules outrank bundled
-
-## Validation
-
-`lacon validate <path>` parses, type-checks, and dry-runs a rule against optional fixture files. A rule with an invalid regex, an unknown primitive, a circular `extends`, or a missing referenced Starlark file fails to load.
-
-`lacon doctor` runs validation against every rule on the system and reports broken ones.
+`lacon validate <path>` parses, type-checks, and dry-runs a rule against optional fixture files. A rule with an invalid regex, an unknown primitive, a circular `extends`, or a missing referenced Starlark file fails to load. `lacon doctor` runs validation against every rule on the system and reports broken ones.
