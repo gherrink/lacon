@@ -1,193 +1,95 @@
+---
+schema-version: 1
+---
+
 # Tracking data model
 
-Reference for the local SQLite database that records every invocation. Lives at `~/.local/share/lacon/history.db` with `0700` permissions on the directory.
+## Goal
 
-## Goals
+Reference for the local SQLite database that records every invocation. It lives at `~/.local/share/lacon/history.db` with `0700` permissions on the directory.
 
-- Cheap synchronous writes on the hook hot path (single INSERT, sub-millisecond)
-- Queryable for the `stats` and `explain` CLI commands
-- Privacy-respecting: raw output retention is opt-in and pruned aggressively
-- Self-contained: no daemon, no migrations service. Schema migrations applied on `lacon` startup.
+## Context
 
-## Schema
+Design goals: cheap synchronous writes on the hook hot path (a single sub-millisecond INSERT); queryable for the `stats` and `explain` CLI commands; privacy-respecting (raw output retention is opt-in and pruned aggressively); self-contained (no daemon, no migrations service — schema migrations are applied on `lacon` startup).
+
+## Criteria
+
+### Schema (tables and indexes)  {#schema-tables-and-indexes}
+
+Three tables, per the following DDL:
 
 ```sql
 CREATE TABLE invocations (
   id                      INTEGER PRIMARY KEY,
   ts                      INTEGER NOT NULL,        -- unix epoch ms
-  assistant               TEXT NOT NULL,           -- 'claude-code', etc.
-  session_id              TEXT,                    -- from hook context if available
-  project_path            TEXT,                    -- cwd at invocation
-
-  command_raw             TEXT NOT NULL,           -- exact command line received
-  command_normalized      TEXT NOT NULL,           -- for grouping; e.g. 'pnpm install'
-  rule_id                 TEXT,                    -- NULL = no rule matched
-  rule_source             TEXT,                    -- 'project' | 'user' | 'bundled' | NULL
-
+  assistant               TEXT NOT NULL,
+  session_id              TEXT,
+  project_path            TEXT,
+  command_raw             TEXT NOT NULL,
+  command_normalized      TEXT NOT NULL,
+  rule_id                 TEXT,
+  rule_source             TEXT,                    -- 'project'|'user'|'bundled'|NULL
   exit_code               INTEGER NOT NULL,
   duration_ms             INTEGER NOT NULL,
-
   raw_stdout_bytes        INTEGER NOT NULL,
   raw_stderr_bytes        INTEGER NOT NULL,
   filtered_bytes          INTEGER NOT NULL,
-
-  bypassed                INTEGER NOT NULL DEFAULT 0,  -- !! prefix or env var
-  rewritten               INTEGER NOT NULL DEFAULT 0,  -- we added flags pre-exec
+  bypassed                INTEGER NOT NULL DEFAULT 0,
+  rewritten               INTEGER NOT NULL DEFAULT 0,
   truncated_by_max_bytes  INTEGER NOT NULL DEFAULT 0,
-
   raw_output_id           INTEGER REFERENCES raw_outputs(id) ON DELETE SET NULL
 );
-
-CREATE INDEX idx_inv_ts       ON invocations(ts);
-CREATE INDEX idx_inv_cmd      ON invocations(command_normalized);
-CREATE INDEX idx_inv_rule     ON invocations(rule_id);
-CREATE INDEX idx_inv_project  ON invocations(project_path);
+CREATE INDEX idx_inv_ts      ON invocations(ts);
+CREATE INDEX idx_inv_cmd     ON invocations(command_normalized);
+CREATE INDEX idx_inv_rule    ON invocations(rule_id);
+CREATE INDEX idx_inv_project ON invocations(project_path);
 
 CREATE TABLE raw_outputs (
-  id              INTEGER PRIMARY KEY,
-  invocation_id   INTEGER NOT NULL,
-  stdout          BLOB,
-  stderr          BLOB,
-  created_ts      INTEGER NOT NULL
+  id INTEGER PRIMARY KEY, invocation_id INTEGER NOT NULL,
+  stdout BLOB, stderr BLOB, created_ts INTEGER NOT NULL
 );
-
 CREATE INDEX idx_raw_created ON raw_outputs(created_ts);
 
 CREATE TABLE suspected_regressions (
-  id              INTEGER PRIMARY KEY,
-  invocation_id   INTEGER NOT NULL REFERENCES invocations(id) ON DELETE CASCADE,
-  reason          TEXT NOT NULL,             -- 'rerun_with_verbose', 'explain_called_after', etc.
-  detected_ts     INTEGER NOT NULL
+  id INTEGER PRIMARY KEY,
+  invocation_id INTEGER NOT NULL REFERENCES invocations(id) ON DELETE CASCADE,
+  reason TEXT NOT NULL, detected_ts INTEGER NOT NULL
 );
-
 CREATE INDEX idx_reg_inv ON suspected_regressions(invocation_id);
 ```
 
-## Field semantics
+### command_normalized  {#command-normalized}
 
-### `command_normalized`
+The single most important field for `stats`. Default normalization is `<basename(argv[0])> <argv[1]>` for known package-manager-style commands, otherwise just the basename. The exact normalization is implementation-defined and may improve over time, so this field is not stable across `lacon` versions.
 
-The single most important field for `stats`. Without normalization, `pnpm install`, `pnpm install --frozen-lockfile`, and `/usr/local/bin/pnpm install` look like three different commands.
+### rule_source  {#rule-source}
 
-Default normalization: `<basename(argv[0])> <argv[1]>` for known package-manager-style commands; otherwise just the basename. The exact normalization is implementation-defined and may improve over time, so this field is not stable across `lacon` versions.
+Identifies the layer a rule came from: `project`, `user`, or `bundled`; `NULL` means no rule matched.
 
-### `rule_source`
+### Boolean flag fields  {#boolean-flag-fields}
 
-Identifies which layer the rule came from: `project`, `user`, or `bundled`. `NULL` means no rule matched. Used to answer "are project-specific rules pulling their weight" type questions.
+`bypassed` = 1 when the user explicitly bypassed filtering (`!!` prefix or `LACON_DISABLE=1`) — a high bypass rate on a rule is a smell. `rewritten` = 1 when the `rewrite` step modified the command pre-execution — distinguishes tokens saved by filtering from tokens never produced. `truncated_by_max_bytes` = 1 when the final `max_bytes` cap fired — a high count means earlier stages aren't doing enough.
 
-### `bypassed`
+### raw_output_id  {#raw-output-id}
 
-1 if the user explicitly bypassed filtering for this invocation (`!!` prefix or `LACON_DISABLE=1`). High bypass rate on a rule is a smell.
+NULL by default; when raw-output retention is enabled it points to the `raw_outputs` row storing the original stdout/stderr.
 
-### `rewritten`
+### Reporting views  {#reporting-views}
 
-1 if the `rewrite` step modified the command before execution. Useful for distinguishing "tokens saved by output filtering" from "tokens saved by never producing them in the first place."
+Four views back the `stats` command: `v_unmatched_offenders` (top raw-byte commands with no rule matched, `bypassed = 0`); `v_filtered_offenders` (top filtered-byte commands with a rule, including `AVG` `avg_keep_ratio`); `v_bypass_rate` (per-rule bypass fraction, `HAVING COUNT(*) > 5`); `v_project_savings` (per-`project_path` runs/raw/filtered/bytes_saved, `bypassed = 0`).
 
-### `truncated_by_max_bytes`
+### Retention  {#retention}
 
-1 if the final `max_bytes` cap kicked in. High count for a rule means the earlier stages aren't doing enough work and `max_bytes` is load-bearing.
+Default retention: `invocations` 30 days, `raw_outputs` 3 days, `suspected_regressions` 30 days (tied to invocations). Windows are configurable in `~/.config/lacon/config.yaml`. Pruning runs on `lacon` startup as a single `DELETE ... WHERE created_ts < ?` per table.
 
-### `raw_output_id`
+### Privacy contract  {#privacy-contract}
 
-NULL by default. When raw output retention is enabled, points to the row in `raw_outputs` storing the original stdout/stderr.
+Raw-output storage is off by default and opt-in per project via `store_raw_outputs: true`. The DB directory and contents are `0700` (user-only), enforced at DB initialization. The first time a project config flips `store_raw_outputs` off→on, `lacon` prints a one-time stderr notice (what is retained, where, how long), suppressed thereafter via a marker in the project config dir. There is no automatic redaction — captured output is stored byte-for-byte and users opting in own what their commands print. v1 ships no `lacon purge` command; users clear data by removing the DB file or via `sqlite3`. No telemetry, no remote sync, no network access.
 
-## Views
+### Migration policy  {#migration-policy}
 
-```sql
--- Top offenders by raw bytes, no rule matched (candidates for new rules)
-CREATE VIEW v_unmatched_offenders AS
-SELECT command_normalized,
-       COUNT(*) AS runs,
-       SUM(raw_stdout_bytes + raw_stderr_bytes) AS total_raw_bytes
-FROM invocations
-WHERE rule_id IS NULL AND bypassed = 0
-GROUP BY command_normalized
-ORDER BY total_raw_bytes DESC;
+Schema changes ship as numbered migrations applied automatically at startup. Migrations are append-only — never edit a released migration; down migrations are not supported.
 
--- Top offenders by filtered bytes, rule matched (existing rules leaving tokens on the table)
-CREATE VIEW v_filtered_offenders AS
-SELECT command_normalized, rule_id,
-       COUNT(*) AS runs,
-       SUM(filtered_bytes) AS total_filtered_bytes,
-       AVG(CAST(filtered_bytes AS REAL) /
-           NULLIF(raw_stdout_bytes + raw_stderr_bytes, 0)) AS avg_keep_ratio
-FROM invocations
-WHERE rule_id IS NOT NULL AND bypassed = 0
-GROUP BY command_normalized, rule_id
-ORDER BY total_filtered_bytes DESC;
+### Deliberately out of scope  {#deliberately-out-of-scope}
 
--- Smell: rules the agent keeps overriding
-CREATE VIEW v_bypass_rate AS
-SELECT rule_id,
-       COUNT(*) AS total,
-       SUM(bypassed) AS bypassed,
-       CAST(SUM(bypassed) AS REAL) / COUNT(*) AS bypass_rate
-FROM invocations
-WHERE rule_id IS NOT NULL
-GROUP BY rule_id
-HAVING COUNT(*) > 5
-ORDER BY bypass_rate DESC;
-
--- Per-project savings summary
-CREATE VIEW v_project_savings AS
-SELECT project_path,
-       COUNT(*) AS total_runs,
-       SUM(raw_stdout_bytes + raw_stderr_bytes) AS raw_total,
-       SUM(filtered_bytes) AS filtered_total,
-       SUM(raw_stdout_bytes + raw_stderr_bytes - filtered_bytes) AS bytes_saved
-FROM invocations
-WHERE bypassed = 0
-GROUP BY project_path
-ORDER BY bytes_saved DESC;
-```
-
-## Retention
-
-Two retention policies, both configurable in `~/.config/lacon/config.yaml` (see [config-schema → retention](config-schema.md#retention) for the full key list and layer scope):
-
-| Table | Default retention | Reason |
-|-------|-------------------|--------|
-| `invocations` | 30 days | Cheap to keep; useful for trend analysis |
-| `raw_outputs` | 3 days | Bulky; mainly useful for recent `lacon explain` calls |
-| `suspected_regressions` | 30 days | Tied to `invocations` |
-
-Pruning runs on `lacon` startup: a single `DELETE FROM ... WHERE created_ts < ?` against each table.
-
-## Privacy
-
-The v1 privacy contract for `raw_outputs`:
-
-- **Off by default.** Storage is opt-in per project in `.lacon/config.yaml` (see [config-schema → `store_raw_outputs`](config-schema.md#store_raw_outputs)):
-
-  ```yaml
-  store_raw_outputs: true
-  ```
-
-- **Directory permissions: `0700`.** The DB directory and its contents are user-only-readable. Enforced at DB initialization.
-
-- **Opt-in warning.** The first time `lacon` runs against a project config where `store_raw_outputs` flips from off to on, it prints a one-time stderr notice explaining what will be retained, where, and for how long. Suppressed on subsequent invocations via a marker in the project config dir.
-
-- **No automatic redaction.** Captured output is stored byte-for-byte. Users opting in are responsible for what their commands print. Pattern-based secret redaction would be best-effort heuristic — false negatives leak secrets while false positives drop legitimate output, and the feature claim creates downstream incident risk. Listed as a [backlog](../backlog.md) candidate.
-
-- **Manual cleanup.** v1 ships no dedicated `lacon purge` command. Users clear retained data by:
-  - Removing the DB file: `rm ~/.local/share/lacon/history.db`
-  - Or selectively via `sqlite3`:
-
-    ```bash
-    sqlite3 ~/.local/share/lacon/history.db "DELETE FROM raw_outputs;"
-    ```
-
-  A `lacon purge` subcommand with date/project/scope filtering is a [backlog](../backlog.md) candidate.
-
-- **No telemetry, no remote sync, no network access.**
-
-## Migration policy
-
-Schema changes ship as numbered migrations applied automatically at startup. Migrations are append-only — never edit a migration after it's released. Down migrations are not supported.
-
-## What's deliberately not in this schema (yet)
-
-- Token counts (we store bytes; tokens require a tokenizer choice — deferred to v2, see [backlog → Per-token accounting](../backlog.md))
-- Cost estimates (depends on token counts)
-- Cross-machine sync state
-- User authentication (irrelevant for local-only)
+Not in the v1 schema: token counts (require a tokenizer choice — deferred to v2), cost estimates (depend on token counts), cross-machine sync state, and user authentication (irrelevant for a local-only tool).
