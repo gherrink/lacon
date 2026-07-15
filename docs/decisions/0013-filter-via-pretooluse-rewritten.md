@@ -8,7 +8,7 @@ schema-version: 2
 
 ## Context
 
-ADR 0001 chose Claude Code's `PreToolUse` / `PostToolUse` hooks. The architecture (`docs/architecture.md`) and v1 scope both assumed `PostToolUse` could replace the bytes the model receives as the tool result — via a `hookSpecificOutput.updatedToolOutput` field earlier research suggested existed. An empirical probe against live Claude Code on 2026-05-05 (see open-questions.md → "Claude Code hook mechanics") confirmed there is no such field: a `PostToolUse` hook returning `updatedToolOutput` has no effect; the model receives the raw stdout. Only `additionalContext` reaches the model, appended *after* the raw output as a `<system-reminder>`, not as a replacement. This invalidates the central design assumption of post-execution byte reduction via `PostToolUse`.
+ADR 0001 chose Claude Code's `PreToolUse` / `PostToolUse` hooks. The architecture documentation and v1 scope both assumed `PostToolUse` could replace the bytes the model receives as the tool result — via a `hookSpecificOutput.updatedToolOutput` field earlier research suggested existed. An empirical probe against live Claude Code on 2026-05-05 (see the open-questions log → "Claude Code hook mechanics") confirmed there is no such field: a `PostToolUse` hook returning `updatedToolOutput` has no effect; the model receives the raw stdout. Only `additionalContext` reaches the model, appended *after* the raw output as a `<system-reminder>`, not as a replacement. This invalidates the central design assumption of post-execution byte reduction via `PostToolUse`.
 
 ## Options
 
