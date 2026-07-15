@@ -64,6 +64,16 @@ To filter your own commands, write a rule under `.lacon/rules/`. See the
 [worked example](docs/worked-example.md) to get started and the
 [primitive reference](docs/primitive-reference.md) for what each pipeline stage does.
 
+## Performance
+
+`lacon` sits on the hook hot path — `lacon run` is invoked on every matched
+command — so cold start is a hard constraint, budgeted at **≤ 10 ms**. On Linux
+the CLI cold-starts in ~1.1 ms (`lacon --version` / `validate`), and the hook hot
+path's steady-state `Tracker::open` runs in **~208 µs**, enforced by a
+deterministic in-process benchmark gate (`assert!(mean < 3700 µs)`) on every CI
+run across both Linux and macOS. Full methodology and tables in
+[benchmarks](docs/benchmarks.md).
+
 ## Documentation
 
 - [Worked example](docs/worked-example.md) — writing a project-specific filter rule
@@ -74,6 +84,7 @@ To filter your own commands, write a rule under `.lacon/rules/`. See the
 - [Architecture](docs/architecture/engine-and-claude-code-integration.md) — system shape
 - [Open questions](docs/open-questions.md) — known risks and unknowns
 - [Bundled rules roadmap](docs/roadmap.md) — which filters we plan to ship
+- [Benchmarks](docs/benchmarks.md) — cold-start measurements and methodology
 - Specs:
   - [Filter rule schema](docs/specs/filter-rule-schema.md)
   - [Tracking data model](docs/specs/tracking-data-model.md)
