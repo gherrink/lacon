@@ -61,10 +61,10 @@ CI (`.github/workflows/ci.yml`) is **hermetic by contract** — two OS lanes (ub
 
 A Rust CLI that integrates with coding-assistant hook systems (Claude Code first) to filter and rewrite bash command output before it enters the model's context window. Goal: 30–70% byte reduction on common commands without dropping signal. Local-only, no LLM calls, no network.
 
-The big picture in `docs/architecture.md`:
+The big picture in `docs/architecture/engine-and-claude-code-integration.md`:
 
 - **Adapter** (per assistant) → **`lacon run` wrapper** → **Rule resolver** → **Pipeline runner** (streaming) → **Tracker** (SQLite). The core engine is assistant-agnostic; adapters are dumb translators that rewrite commands.
-- The Claude Code `PreToolUse` hook does both jobs: applies the rule's `rewrite` block (flag add/remove) and, for matched commands, wraps the result as `lacon run --rule <id> -- <cmd>`. Filtering happens inside `lacon run`, which spawns the subprocess, merges stderr into stdout, and writes filtered bytes to its own stdout — that's what Claude Code captures as the tool result. There is **no `PostToolUse` hook** in v1: empirical testing on 2026-05-05 showed `PostToolUse` cannot replace tool output (only `additionalContext` reaches the model, additively). See [ADR 0013](docs/decisions/0013-filter-via-pretooluse-wrapper.md).
+- The Claude Code `PreToolUse` hook does both jobs: applies the rule's `rewrite` block (flag add/remove) and, for matched commands, wraps the result as `lacon run --rule <id> -- <cmd>`. Filtering happens inside `lacon run`, which spawns the subprocess, merges stderr into stdout, and writes filtered bytes to its own stdout — that's what Claude Code captures as the tool result. There is **no `PostToolUse` hook** in v1: empirical testing on 2026-05-05 showed `PostToolUse` cannot replace tool output (only `additionalContext` reaches the model, additively). See [ADR 0013](docs/decisions/0013-filter-via-pretooluse-rewritten.md).
 - `on_error` *replaces* the success pipeline on non-zero exit; it does not merge. Implemented as an internal mode of `lacon run`, switched on the subprocess's observed exit code.
 
 ## Load-bearing design constraints
@@ -85,11 +85,11 @@ These come from ADRs and need to hold across any implementation work:
 - `docs/specs/tracking-data-model.md` — full SQLite schema, indexes, views (`v_unmatched_offenders`, `v_filtered_offenders`, `v_bypass_rate`, `v_project_savings`), retention policies, and the `0700` directory permission requirement.
 - `docs/specs/chained-commands.md` — splitting rules for `&&` / `||` / `;`, per-segment rule resolution, exit-code propagation, and the v1 whole-chain bypass when any segment looks interactive. Granular per-segment TUI bypass is a v2 backlog item.
 
-## v1 scope boundary (`docs/v1-scope.md`)
+## v1 scope boundary (`docs/prds/v1-scope.md`)
 
-In: streaming engine + 10 native primitives + Starlark `post_process`, Claude Code adapter only (`PreToolUse` hook that rewrites matched commands to `lacon run --rule <id> -- <cmd>`), six CLI commands (`init`, `run`, `stats`, `explain`, `doctor`, `validate`) — note `run` is now both the production wrapper and the manual-debug entry, top-level chained-command splitting on `&&` / `||` / `;`, ten bundled rules (Tier 1 in `docs/bundled-rules-roadmap.md`), macOS + Linux.
+In: streaming engine + 10 native primitives + Starlark `post_process`, Claude Code adapter only (`PreToolUse` hook that rewrites matched commands to `lacon run --rule <id> -- <cmd>`), six CLI commands (`init`, `run`, `stats`, `explain`, `doctor`, `validate`) — note `run` is now both the production wrapper and the manual-debug entry, top-level chained-command splitting on `&&` / `||` / `;`, ten bundled rules (Tier 1 in `docs/roadmap.md`), macOS + Linux.
 
-Out: other adapters, per-line streaming Starlark, filtering inside pipes, native Windows, public rule registry, token-based accounting. Many of these are explicitly listed in `docs/backlog.md` — if a request matches one, point at the backlog rather than building it as a side quest.
+Out: other adapters, per-line streaming Starlark, filtering inside pipes, native Windows, public rule registry, token-based accounting. Many of these are explicitly listed in `docs/deferral-ledger.md` — if a request matches one, point at the backlog rather than building it as a side quest.
 
 ## Open questions to be aware of
 

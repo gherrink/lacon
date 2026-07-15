@@ -13,8 +13,8 @@
 #      touch `Tracker::open`), not just the lazy-open `--version`/`validate`
 #      paths;
 #   3. echoes the probe's per-OS-labeled markdown table to stdout (the probe
-#      labels output with `std::env::consts::OS`) so it can be pasted into
-#      `docs/architecture.md`'s "Cold-start measurements" table.
+#      labels output with `std::env::consts::OS`) for recording cold-start
+#      measurements.
 #
 # The headline statistic is min-of-N (the probe discards 3 warm-ups and reports
 # min/median/p95/max). On macOS the min-of-N is reported as a SOFT gate; the

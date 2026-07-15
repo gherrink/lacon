@@ -1,11 +1,13 @@
 //! Cold-start probe — measures wall-clock startup of `target/release/lacon`.
 //!
-//! Per CONTEXT.md benchmark item 2 + REQ-acceptance-cold-start-budget (Phase 6).
+//! Establishes the cold-start baseline for the hook hot path against the
+//! ≤10 ms budget.
 //!
 //! Usage:
 //!   cargo build --release && cargo run --release --bin cold_start_probe
 //!
-//! Output: a markdown-table line ready to paste into docs/architecture.md.
+//! Output: a markdown-table line summarizing per-scenario cold-start timings
+//! (min/median/p95/max).
 //!
 //! Note: This probe is NOT intended to be run in CI by default (T-07-02:
 //! 50 × 2 subprocess invocations). It is an operator-level tool for establishing

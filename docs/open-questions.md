@@ -18,7 +18,7 @@ Genuine unknowns where committing to an answer upfront is more likely to be wron
 
 ### Signal forwarding in `lacon run` — resolved (2026-05-06), see Resolved section
 
-**Resolution summary:** SIGTERM/SIGINT forwarded via `nix::sys::signal::kill`; no drain; exit `128 + sig`. See D-12 in `docs/architecture.md`.
+**Resolution summary:** SIGTERM/SIGINT forwarded via `nix::sys::signal::kill`; no drain; exit `128 + sig`. See D-12 in `docs/architecture/engine-and-claude-code-integration.md`.
 
 ### `lacon init` idempotency
 
@@ -28,7 +28,7 @@ What happens if `lacon init` runs in a project where the hook is already install
 
 ### stdout/stderr merge ordering — resolved (2026-05-06), see Resolved section
 
-**Resolution summary:** Best-effort line atomicity, no cross-stream order guarantee. Single os_pipe FIFO; wall-clock-arrival ordering. See D-11 in `docs/architecture.md`.
+**Resolution summary:** Best-effort line atomicity, no cross-stream order guarantee. Single os_pipe FIFO; wall-clock-arrival ordering. See D-11 in `docs/architecture/engine-and-claude-code-integration.md`.
 
 ## Resolved
 
@@ -36,11 +36,11 @@ What happens if `lacon init` runs in a project where the hook is already install
 
 SIGTERM and SIGINT received by the `lacon run` process are forwarded to the subprocess PID via `nix::sys::signal::kill(Pid::from_raw(child_pid), signal)`. The v1 implementation does **not** drain or flush remaining buffered output after forwarding the signal; it exits with `128 + sig` after the subprocess terminates. Process-group kill (negative PID) is not v1 — only the direct subprocess PID is targeted. This means that any children of the subprocess are not killed when the user or timeout interrupts the session.
 
-**Canonical answer:** SIGTERM/SIGINT forward via `nix::kill` + immediate exit, no drain. The drain-partial-result path is deferred to [backlog](backlog.md) pending evidence that partial results on timeout are meaningful to users in practice.
+**Canonical answer:** SIGTERM/SIGINT forward via `nix::kill` + immediate exit, no drain. The drain-partial-result path is deferred to [backlog](deferral-ledger.md) pending evidence that partial results on timeout are meaningful to users in practice.
 
 **Implementation:** `crates/lacon-core/src/runtime/mod.rs` (PLAN-05 Task 2). Cross-platform note: `nix::sys::signal::kill` is portable; the API is the same on Linux and macOS. Phase 1 was tested on Linux only; macOS verification is deferred to the Phase 6 acceptance gate.
 
-See also: [D-12 in docs/architecture.md](architecture.md#signal-forwarding-d-12).
+See also: [D-12 in docs/architecture/engine-and-claude-code-integration.md](architecture/engine-and-claude-code-integration.md).
 
 ### stdout/stderr merge ordering — resolved (D-11, 2026-05-06)
 
@@ -50,7 +50,7 @@ The stdout/stderr merge in `lacon run` uses a single `os_pipe` write-end cloned 
 
 **Implementation:** `crates/lacon-core/src/runtime/mod.rs` (PLAN-05). The pattern `os_pipe + single reader thread + crossbeam-channel` is documented in `01-05-SUMMARY.md`.
 
-See also: [D-11 in docs/architecture.md](architecture.md#stream-merge-guarantee-d-11).
+See also: [D-11 in docs/architecture/engine-and-claude-code-integration.md](architecture/engine-and-claude-code-integration.md).
 
 ### Claude Code hook mechanics — resolved (ADR 0013)
 
@@ -67,7 +67,7 @@ The load-bearing question — *can a hook modify output before the model sees it
 
 **The blocker:** `PostToolUse` **cannot** replace tool output. There is no `updatedToolOutput` field; the probe confirmed that returning one has no effect, and the model receives the raw stdout regardless.
 
-**Resolution:** [ADR 0013](decisions/0013-filter-via-pretooluse-wrapper.md). v1 filters output via a `PreToolUse`-rewritten command that wraps the original in `lacon run --rule <id> -- <cmd>`, so filtering happens inside the subprocess wrapper before Claude Code captures the tool result. The streaming pipeline, rule schema, primitives, and Starlark stage are unchanged — only their execution location moves from "hook responder" to "subprocess wrapper."
+**Resolution:** [ADR 0013](decisions/0013-filter-via-pretooluse-rewritten.md). v1 filters output via a `PreToolUse`-rewritten command that wraps the original in `lacon run --rule <id> -- <cmd>`, so filtering happens inside the subprocess wrapper before Claude Code captures the tool result. The streaming pipeline, rule schema, primitives, and Starlark stage are unchanged — only their execution location moves from "hook responder" to "subprocess wrapper."
 
 `additionalContext` is reserved for v1.5: annotation of unmatched commands ("lacon could have stripped ~3 kB if it had a rule for this").
 
@@ -90,13 +90,13 @@ Full semantics now live in [chained-commands](specs/chained-commands.md). Summar
 
 - **"Second command depends on first command's output"** — non-issue. `lacon run` propagates exit codes unchanged and only filters its own stdout (what Claude Code captures). The shell-level data flow between segments is untouched. Filtering changes what the model sees, not what the next command sees.
 - **Per-segment rule semantics** — each segment is resolved independently with first-match-wins and project > user > bundled precedence. No merging, no cross-segment effects. Matched segments are wrapped as `lacon run --rule <id> -- <segment>`, unmatched segments pass through, and the original operators are preserved.
-- **TUI-in-chain (v1)** — if any segment matches the TUI heuristic, the **entire chain** is bypassed. Conservative by design; granular per-segment bypass is a [backlog](backlog.md) v2 candidate gated on tracking data showing the lost filtering opportunity is material.
+- **TUI-in-chain (v1)** — if any segment matches the TUI heuristic, the **entire chain** is bypassed. Conservative by design; granular per-segment bypass is a [backlog](deferral-ledger.md) v2 candidate gated on tracking data showing the lost filtering opportunity is material.
 
 User-driven bypass (`!!`, `LACON_DISABLE=1`) remains whole-command. The splitting boundary (top-level operators only — quotes, subshells, command substitution, heredocs are opaque) is captured in the spec along with the test obligations for the splitter.
 
 ### What lives outside hooks — resolved (2026-05-06)
 
-Boundary documented in [v1-scope → Coverage boundary](v1-scope.md#coverage-boundary). The original concerns sort into three categories:
+Boundary documented in [v1-scope → Coverage boundary](prds/v1-scope.md). The original concerns sort into three categories:
 
 - **Fundamental limitation:** subprocesses from non-Bash tools or MCP servers don't flow through `PreToolUse(Bash)`, so `lacon` can't see them.
 - **By design:** redirected output (to files, backgrounded processes, `/dev/tty`) is invisible to both `lacon` and the model — there's nothing to filter because the model isn't seeing it either.
@@ -106,20 +106,20 @@ Long-running watchers and ANSI/control-sequence output were partially misframed 
 
 ### Tokenizer choice — resolved-as-deferred (2026-05-06)
 
-The schema impact concern is settled: existing tracking columns are explicitly byte-named (`raw_stdout_bytes`, `raw_stderr_bytes`, `filtered_bytes`), so adding token columns later is a normal append-only migration ([ADR 0011](decisions/0011-sqlite-for-tracking.md)) with no v1 work required.
+The schema impact concern is settled: existing tracking columns are explicitly byte-named (`raw_stdout_bytes`, `raw_stderr_bytes`, `filtered_bytes`), so adding token columns later is a normal append-only migration ([ADR 0011](decisions/0011-sqlite-for-local-tracking.md)) with no v1 work required.
 
-The tokenizer choice itself is a v2 design decision and lives under [backlog → Per-token accounting](backlog.md), with the three-option tradeoff (Anthropic's tokenizer, tiktoken, heuristic) captured there for whoever picks it up. One factual update from the original framing: Anthropic's tokenizer is no longer closed — it's reachable via the Messages API `count_tokens` endpoint and via vendorable open packages, so the v2 trade is more "online API vs. vendored vs. heuristic" than "closed vs. open."
+The tokenizer choice itself is a v2 design decision and lives under [backlog → Per-token accounting](deferral-ledger.md), with the three-option tradeoff (Anthropic's tokenizer, tiktoken, heuristic) captured there for whoever picks it up. One factual update from the original framing: Anthropic's tokenizer is no longer closed — it's reachable via the Messages API `count_tokens` endpoint and via vendorable open packages, so the v2 trade is more "online API vs. vendored vs. heuristic" than "closed vs. open."
 
 ### Privacy and `raw_outputs` — resolved (2026-05-06)
 
 v1 contract is now documented in [tracking-data-model → Privacy](specs/tracking-data-model.md#privacy):
 
 - **Off by default + `0700` + opt-in stderr warning** on the first off → on transition. That's the v1 protection.
-- **No automatic redaction.** Best-effort regex stripping creates false-confidence risk (false negatives leak, false positives drop legitimate output) and would imply a "lacon redacts secrets" feature claim we can't honor. Deferred to [backlog](backlog.md) gated on real user-regret signal.
-- **No `lacon purge` command in v1.** Users clear retained data via `rm` on the DB file or direct `sqlite3 DELETE`. Adding `purge` would push the v1 CLI past its 6-command boundary; deferred to [backlog](backlog.md).
+- **No automatic redaction.** Best-effort regex stripping creates false-confidence risk (false negatives leak, false positives drop legitimate output) and would imply a "lacon redacts secrets" feature claim we can't honor. Deferred to [backlog](deferral-ledger.md) gated on real user-regret signal.
+- **No `lacon purge` command in v1.** Users clear retained data via `rm` on the DB file or direct `sqlite3 DELETE`. Adding `purge` would push the v1 CLI past its 6-command boundary; deferred to [backlog](deferral-ledger.md).
 - **Encryption at rest** — already backlog material. v1 stance unchanged.
 
-A side-effect of this resolution: the tracking spec previously documented `lacon purge` subcommands as if they shipped in v1, contradicting `v1-scope.md`. The spec has been corrected to match the 6-command v1 surface and the manual cleanup path.
+A side-effect of this resolution: the tracking spec previously documented `lacon purge` subcommands as if they shipped in v1, contradicting `prds/v1-scope.md`. The spec has been corrected to match the 6-command v1 surface and the manual cleanup path.
 
 ### `.lacon/config.yaml` schema — resolved (2026-05-06)
 
@@ -140,7 +140,7 @@ Specified in [chained-commands → Interactive (TUI) commands](specs/chained-com
 - The heuristic is a function `is_tui(command, args) -> bool` implemented in the adapter, called per-segment after chain splitting and **before** rule resolution. If any segment returns true, the entire input is bypassed.
 - It runs before rule resolution because most TUI tools (`vim`, `less`, `htop`, `ssh`) have no rule, so a resolver-internal check would miss them. The heuristic must fire on unmatched segments too.
 - v1 ships a hardcoded list: pure-TUI commands by basename (`vim`, `vi`, `nvim`, `nano`, `emacs`, `less`, `more`, `most`, `man`, `htop`, `top`, `btop`, `screen`, `tmux`, `ssh`, `mosh`, `ipython`, `irb`, `pry`, `redis-cli`, `crontab`, `visudo`) plus conditional patterns for `git` interactive subcommands, `npm`/`yarn`/`pnpm init` without `-y`, and language REPLs (`node`, `python`, `mysql`, `psql`, `sqlite3`) with no positional arg.
-- User-overridable list deferred to [backlog](backlog.md). v1 escape hatches (`!!` prefix, `LACON_DISABLE=1`) cover individual false positives.
+- User-overridable list deferred to [backlog](deferral-ledger.md). v1 escape hatches (`!!` prefix, `LACON_DISABLE=1`) cover individual false positives.
 
 ### Testing strategy for rules — resolved (2026-05-06)
 
@@ -149,4 +149,4 @@ Strategy now lives in [testing-rules](testing-rules.md). Summary:
 - **Fixture-based, hermetic CI.** Each bundled rule has captured `input.txt` / `expected.txt` / `meta.yaml` triples under `bundled-rules/<rule-id>/fixtures/<scenario>/`. A single Rust integration test walks the tree and asserts byte-exact rule output against expectations. CI never installs `pnpm`, `cargo`, etc.
 - **Per-fixture assertions:** byte-exact output match, ≥50% reduction (skippable for edge-case fixtures via `meta.yaml` flag), and an opt-in `must_keep_lines` list for explicitly preserving error/warning substrings.
 - **Regeneration is a developer-local manual step**, helped by `scripts/capture-fixtures.sh`. Procedure documented in the new doc. Periodic re-capture is on the developer, not CI.
-- **Deferred to [backlog](backlog.md):** user-facing `lacon validate --fixtures` for project rules, and automated CI drift detection.
+- **Deferred to [backlog](deferral-ledger.md):** user-facing `lacon validate --fixtures` for project rules, and automated CI drift detection.

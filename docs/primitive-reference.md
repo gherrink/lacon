@@ -4,7 +4,7 @@ A worked input→output example for every one of the ten native pipeline primiti
 
 `lacon` rules filter command output by running it through an ordered `pipeline` of
 stages. Each stage is one *primitive*. With the deliberate exception of the Starlark
-`post_process` stage (which runs on aggregated output, see [ADR 0008](decisions/0008-aggregated-post-process.md)),
+`post_process` stage (which runs on aggregated output, see [ADR 0008](decisions/0008-aggregated-post-process-starlark.md)),
 every native primitive is a **streaming, line-by-line transformer** — it sees output
 one line at a time and never buffers more than its own bounded state ([ADR 0005](decisions/0005-streaming-first-output-processing.md)).
 Memory is bounded by the largest stateful primitive (typically `keep_tail N`) plus the

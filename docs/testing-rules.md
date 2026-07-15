@@ -45,7 +45,7 @@ os: linux
 notes: clean install on a fresh node_modules; lockfile up to date
 ```
 
-`exit_code` selects which filter branch the runner replays, per [ADR-0010](decisions/0010-on-error-replaces-pipeline.md): `0` runs the rule's success `pipeline`; a nonzero code runs the `on_error` pipeline when the rule defines one, and falls through to raw passthrough when it does not. It is load-bearing — without it a failure fixture would silently run the success pipeline and never exercise `on_error`. Record the **actual observed** exit code, not an assumed one: e.g. `cargo build`/`cargo test` failures exit `101` (not `1`).
+`exit_code` selects which filter branch the runner replays, per [ADR-0010](decisions/0010-on-error-replaces.md): `0` runs the rule's success `pipeline`; a nonzero code runs the `on_error` pipeline when the rule defines one, and falls through to raw passthrough when it does not. It is load-bearing — without it a failure fixture would silently run the success pipeline and never exercise `on_error`. Record the **actual observed** exit code, not an assumed one: e.g. `cargo build`/`cargo test` failures exit `101` (not `1`).
 
 `os` is informational, not a test selector — fixtures are platform-agnostic in the sense that the test runs on every supported OS. If a rule needs to behave differently on macOS vs Linux, capture a fixture per OS and let the test runner assert against both.
 
@@ -114,7 +114,7 @@ A helper script lives at `scripts/capture-fixtures.sh` for batch re-capture acro
 
 ## Out of scope for v1
 
-Listed in [backlog](backlog.md):
+Listed in [backlog](deferral-ledger.md):
 
 - **User-facing fixture validation** — `lacon validate <rule.yaml> --fixtures <dir>` for users testing their own project rules. v1 users can manually run `lacon run --rule <id> -- <cmd>` to spot-check.
 - **Automated drift detection** — a periodic CI job that re-captures all bundled-rule fixtures and opens an issue when output diffs from the committed snapshot. v1 relies on developer awareness and user issue reports.

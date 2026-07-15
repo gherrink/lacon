@@ -2,7 +2,7 @@
 
 This walkthrough shows how to write a filter rule for one of your own projects, building
 on a bundled rule rather than starting from scratch. It uses `extends`, the only explicit
-layering mechanism in `lacon` ([ADR 0012](decisions/0012-append-only-inheritance-extends.md)).
+layering mechanism in `lacon` ([ADR 0012](decisions/0012-append-only-inheritance-via.md)).
 
 The full rule format is documented in
 [`docs/specs/filter-rule-schema.md`](specs/filter-rule-schema.md); this page is a guided
@@ -65,7 +65,7 @@ This rule does three things, all driven by the `extends` contract:
   stages run before yours, in order.
 - **It wins resolution against `bundled/pkg-install`.** Rule resolution is
   first-match-wins with project > user > bundled precedence
-  ([ADR 0007](decisions/0007-first-match-wins-rule-resolution.md)). Because this rule
+  ([ADR 0007](decisions/0007-first-match-wins-rule.md)). Because this rule
   lives in the project layer, it is selected ahead of the bundled rule it extends for
   any command both would match.
 

@@ -62,7 +62,7 @@ fn version_flag_works() {
 // ─── D-13: forbidden v2 subcommands MUST be absent ──────────────────────────
 //
 // REQ-cli-surface-cap caps the surface at exactly six subcommands. The v2
-// backlog items below are explicitly out of v1 scope (docs/backlog.md,
+// backlog items below are explicitly out of v1 scope (docs/deferral-ledger.md,
 // PROJECT.md "Out of Scope"): `lacon purge` (manual cleanup only in v1),
 // `lacon install gh:user/repo` (no public rule registry in v1), and a
 // `lacon stats --serve` web UI (no daemon, no network — CON-nfr-no-network).

@@ -68,12 +68,12 @@ To filter your own commands, write a rule under `.lacon/rules/`. See the
 
 - [Worked example](docs/worked-example.md) — writing a project-specific filter rule
 - [Primitive reference](docs/primitive-reference.md) — one example per pipeline primitive
-- [Vision](docs/vision.md) — what we're building and why
-- [v1 scope](docs/v1-scope.md) — what's in the first release
-- [Backlog](docs/backlog.md) — deferred ideas
-- [Architecture](docs/architecture.md) — system shape
+- [Vision](VISION.md) — what we're building and why
+- [v1 scope](docs/prds/v1-scope.md) — what's in the first release
+- [Backlog](docs/deferral-ledger.md) — deferred ideas
+- [Architecture](docs/architecture/engine-and-claude-code-integration.md) — system shape
 - [Open questions](docs/open-questions.md) — known risks and unknowns
-- [Bundled rules roadmap](docs/bundled-rules-roadmap.md) — which filters we plan to ship
+- [Bundled rules roadmap](docs/roadmap.md) — which filters we plan to ship
 - Specs:
   - [Filter rule schema](docs/specs/filter-rule-schema.md)
   - [Tracking data model](docs/specs/tracking-data-model.md)

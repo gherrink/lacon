@@ -6,10 +6,9 @@
 //! `<<DELIM` heredoc bodies). Pipes (`|`) are NEVER split operators — a pipeline
 //! is one segment (D-09 / REQ-adapter-pipes-passthrough).
 //!
-//! The authoritative test gate is the 13-scenario matrix in
-//! `docs/specs/chained-commands.md:122-138` (mirrored in `tests/chain_split.rs`).
-//! The DFA state transition table lives in
-//! `.planning/phases/03-claude-code-adapter-lacon-init/03-RESEARCH.md:466-510`.
+//! The authoritative test gate is the splitter test obligations in the
+//! `chained-commands` spec (`docs/specs/chained-commands.md`), mirrored in
+//! `tests/chain_split.rs`. The DFA state-transition logic is implemented below.
 //!
 //! Per D-06 the splitter operates on the raw UTF-8 command string (NOT a
 //! pre-tokenized argv) so quote/heredoc state is observable. Per D-07 each
