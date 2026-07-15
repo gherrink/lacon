@@ -13,6 +13,103 @@ Reference for the YAML format that defines filter rules. The implementation must
 
 Rules live in three places, in priority order: `<cwd>/.lacon/rules/*.yaml` (highest), `~/.config/lacon/rules/*.yaml`, then bundled (embedded in the binary, lowest). Resolution is first-match-wins with no merging across layers; layering onto a bundled rule is done explicitly via `extends`.
 
+#### Examples
+
+Top-level structure of a rule file:
+
+```yaml
+id: pnpm-install
+description: pnpm/npm/yarn install
+extends: bundled/pkg-install      # optional
+match: { ... }                    # required unless inherited
+bypass_when: { ... }              # optional
+rewrite: { ... }                  # optional
+pipeline: [ ... ]                 # required unless inherited
+on_error: { ... }                 # optional
+post_process: { ... }             # optional
+```
+
+`match` (OR of sub-matches, or a single `command_regex`):
+
+```yaml
+match:
+  any:
+    - { command: pnpm, args_prefix: [install] }
+    - { command: pnpm, args_prefix: [i] }
+  # OR alternative:
+  command_regex: '^(pnpm|npm)\s+(install|i)'
+```
+
+`bypass_when` and `rewrite`:
+
+```yaml
+bypass_when:
+  any:
+    - has_flag: ['--verbose', '-v', '--debug']
+    - is_tty: true
+    - env: { LACON_DEBUG_RULE: '1' }
+rewrite:
+  add_flags: ['--reporter=silent']    # idempotent
+  remove_flags: ['--verbose', '-v']
+  replace_flags:
+    '--progress': '--no-progress'
+```
+
+Native primitives (one line each; args inline):
+
+```yaml
+pipeline:
+  - strip_ansi
+  - drop_regex: '^npm warn deprecated'
+  - keep_regex: '(error|ERROR|FAIL)'
+  - replace_regex: { pattern: '\b/Users/[^/]+/', replacement: '~/' }
+  - dedupe: { max_kept: 1 }
+  - collapse_repeated: { pattern: '^Progress: \d+%', max_kept: 1 }
+  - keep_around_match: { pattern: '^FAIL ', before: 0, after: 20 }
+  - keep_tail: { lines: 50 }
+  - max_bytes: 8192          # should be the last stage
+```
+
+Starlark stage and its function signature:
+
+```yaml
+  - script: { path: scripts/jest_summary.star, function: process }
+```
+
+```python
+def process(ctx, lines):
+    """
+    ctx:   .exit_code, .duration_ms, .command, .args, .project_path
+    lines: list[str] - output after preceding stages
+    return list[str] - output passed to subsequent stages
+    """
+    ...
+```
+
+`on_error` (fully replaces the pipeline on non-zero exit):
+
+```yaml
+on_error:
+  pipeline:
+    - strip_ansi
+    - keep_regex: '(ERR_|error|FAIL)'
+    - keep_tail: { lines: 50 }
+    - max_bytes: 8192
+```
+
+Inheritance worked example - a project rule extending a bundled one:
+
+```yaml
+# .lacon/rules/our-monorepo-pnpm.yaml
+id: our-monorepo-pnpm
+extends: bundled/pkg-install
+pipeline:
+  - drop_regex: '^Lockfile is up to date'
+  - drop_regex: '^Already up to date'
+```
+
+This inherits `match`/`rewrite`/`on_error` from `bundled/pkg-install`, runs the bundled pipeline first and then the two extra `drop_regex` stages, and wins resolution against `bundled/pkg-install` because project rules outrank bundled.
+
 ## Criteria
 
 ### Top-level structure  {#top-level-structure}

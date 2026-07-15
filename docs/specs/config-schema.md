@@ -13,6 +13,45 @@ Reference for the YAML configuration `lacon` loads at three layers (bundled, use
 
 Three layers, lowest to highest priority: bundled (compiled defaults, always present, not editable), user (`~/.config/lacon/config.yaml`), and project (`<cwd>/.lacon/config.yaml`). All layers are optional in that a missing file falls back to the layer below; bundled defaults are always available. Rule files are specified separately in the filter-rule-schema spec.
 
+#### Examples
+
+The v1 keys, with their defaults and scope:
+
+```yaml
+retention:                 # USER-ONLY
+  invocations_days: 30     # also applies to suspected_regressions
+  raw_outputs_days: 3
+defaults:                  # PROJECT-OR-USER
+  max_bytes: 32768         # fallback final-stage cap for rules omitting max_bytes
+store_raw_outputs: false   # PROJECT-OR-USER (project-level opt-in is the documented pattern)
+```
+
+Per-key deep merge across layers. Given bundled defaults plus:
+
+```yaml
+# user
+retention: { invocations_days: 7 }
+defaults:  { max_bytes: 16384 }
+# project
+store_raw_outputs: true
+```
+
+the effective config is: `invocations_days: 7` (user), `raw_outputs_days: 3` (inherited from bundled), `max_bytes: 16384` (user), `store_raw_outputs: true` (project) - the user need not repeat `raw_outputs_days` to keep the bundled default.
+
+A project config using a user-only key fails validation with a pointer to the right file:
+
+```
+.lacon/config.yaml:1: key `retention` is user-only; move to ~/.config/lacon/config.yaml
+```
+
+Worked example - a chatty monorepo:
+
+```yaml
+# .lacon/config.yaml (repo root)
+defaults: { max_bytes: 8192 }   # this monorepo's tools are chatty; tighten the cap
+store_raw_outputs: true         # team agreed; the dir is gitignored and machine-local
+```
+
 ## Criteria
 
 ### File locations and precedence  {#file-locations-and-precedence}

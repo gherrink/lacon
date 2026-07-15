@@ -13,6 +13,22 @@ Define how `lacon` splits and handles bash command chains formed with `&&`, `||`
 
 This spec assumes the ADR 0013 execution model: the Claude Code `PreToolUse` hook rewrites matched commands into `lacon run --rule <id> -- <segment>` before the shell sees them. All chain handling happens at rewrite time in the hook; `lacon run` itself only ever wraps a single command.
 
+#### Examples
+
+Rewrite emission preserves order and operator type. Given the input:
+
+```
+pnpm install && pnpm test || echo failed
+```
+
+if `pnpm install` matches `pkg-install`, `pnpm test` matches `vitest`, and `echo failed` matches no rule, the hook emits:
+
+```
+lacon run --rule pkg-install -- pnpm install && lacon run --rule vitest -- pnpm test || echo failed
+```
+
+A pipeline is a single segment - `a | b && c` splits as `[a | b, c]`, and the `a | b` segment is wrapped or passed through as one unit. Constructs like `(a && b)`, `$(a && b)`, and `"a && b"` are never split.
+
 ## Criteria
 
 ### Split at top-level operators only  {#split-at-top-level-operators}

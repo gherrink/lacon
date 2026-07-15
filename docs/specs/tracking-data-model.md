@@ -11,7 +11,59 @@ Reference for the local SQLite database that records every invocation. It lives 
 
 ## Context
 
-Design goals: cheap synchronous writes on the hook hot path (a single sub-millisecond INSERT); queryable for the `stats` and `explain` CLI commands; privacy-respecting (raw output retention is opt-in and pruned aggressively); self-contained (no daemon, no migrations service — schema migrations are applied on `lacon` startup).
+Design goals: cheap synchronous writes on the hook hot path (a single sub-millisecond INSERT); queryable for the `stats` and `explain` CLI commands; privacy-respecting (raw output retention is opt-in and pruned aggressively); self-contained (no daemon, no migrations service - schema migrations are applied on `lacon` startup).
+
+#### Examples
+
+The four reporting views that back `lacon stats`:
+
+```sql
+-- Top offenders by raw bytes, no rule matched (candidates for new rules)
+CREATE VIEW v_unmatched_offenders AS
+SELECT command_normalized, COUNT(*) AS runs,
+       SUM(raw_stdout_bytes + raw_stderr_bytes) AS total_raw_bytes
+FROM invocations WHERE rule_id IS NULL AND bypassed = 0
+GROUP BY command_normalized ORDER BY total_raw_bytes DESC;
+
+-- Top offenders by filtered bytes, rule matched (rules leaving tokens on the table)
+CREATE VIEW v_filtered_offenders AS
+SELECT command_normalized, rule_id, COUNT(*) AS runs,
+       SUM(filtered_bytes) AS total_filtered_bytes,
+       AVG(CAST(filtered_bytes AS REAL) /
+           NULLIF(raw_stdout_bytes + raw_stderr_bytes, 0)) AS avg_keep_ratio
+FROM invocations WHERE rule_id IS NOT NULL AND bypassed = 0
+GROUP BY command_normalized, rule_id ORDER BY total_filtered_bytes DESC;
+
+-- Smell: rules the agent keeps overriding
+CREATE VIEW v_bypass_rate AS
+SELECT rule_id, COUNT(*) AS total, SUM(bypassed) AS bypassed,
+       CAST(SUM(bypassed) AS REAL) / COUNT(*) AS bypass_rate
+FROM invocations WHERE rule_id IS NOT NULL
+GROUP BY rule_id HAVING COUNT(*) > 5 ORDER BY bypass_rate DESC;
+
+-- Per-project savings summary
+CREATE VIEW v_project_savings AS
+SELECT project_path, COUNT(*) AS total_runs,
+       SUM(raw_stdout_bytes + raw_stderr_bytes) AS raw_total,
+       SUM(filtered_bytes) AS filtered_total,
+       SUM(raw_stdout_bytes + raw_stderr_bytes - filtered_bytes) AS bytes_saved
+FROM invocations WHERE bypassed = 0
+GROUP BY project_path ORDER BY bytes_saved DESC;
+```
+
+Opting into raw-output capture (per project) and clearing retained data manually:
+
+```yaml
+# .lacon/config.yaml
+store_raw_outputs: true
+```
+
+```bash
+# remove everything
+rm ~/.local/share/lacon/history.db
+# or clear only the bulky raw blobs
+sqlite3 ~/.local/share/lacon/history.db "DELETE FROM raw_outputs;"
+```
 
 ## Criteria
 
