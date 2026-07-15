@@ -1,4 +1,5 @@
 ---
+derived-from: prd:v1-scope
 schema-version: 1
 ---
 
