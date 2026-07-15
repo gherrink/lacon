@@ -94,3 +94,7 @@ Out: other adapters, per-line streaming Starlark, filtering inside pipes, native
 ## Open questions to be aware of
 
 `docs/open-questions.md` is the project's design-risk log, organized by status: **open** items need a decision before the relevant code lands; **deferred to prototyping** items will be settled during implementation when working code exposes the right answer; **resolved** items document the rationale behind specific design choices. Consult it before making decisions that touch any of those topics; add new risks there rather than amending this section.
+
+## Project interface
+
+@.jigc/AGENT.md

@@ -1,0 +1,42 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "jigc start",
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(jigc:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(git push --force:*)",
+      "Read(./.env)",
+      "Bash(cat ./.env:*)",
+      "Read(./.env.*)",
+      "Bash(cat ./.env.*:*)",
+      "Read(./**/*.pem)",
+      "Bash(cat ./**/*.pem:*)",
+      "Read(./**/*.key)",
+      "Bash(cat ./**/*.key:*)",
+      "Read(./**/id_rsa*)",
+      "Bash(cat ./**/id_rsa*:*)",
+      "Read(./**/id_ed25519*)",
+      "Bash(cat ./**/id_ed25519*:*)",
+      "Read(./**/credentials)",
+      "Bash(cat ./**/credentials:*)",
+      "Read(./**/.npmrc)",
+      "Bash(cat ./**/.npmrc:*)"
+    ]
+  }
+}
