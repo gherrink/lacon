@@ -1,139 +1,51 @@
+---
+schema-version: 1
+---
+
 # Config schema
 
-Reference for the YAML configuration loaded by `lacon` at three layers: bundled (compiled defaults), user (`~/.config/lacon/config.yaml`), and project (`<cwd>/.lacon/config.yaml`). Any change here is a breaking change for users.
+## Goal
 
-For rule files, see [filter-rule-schema](filter-rule-schema.md). Config governs *engine and tracking behaviour*; rules govern *what gets filtered.*
+Reference for the YAML configuration `lacon` loads at three layers (bundled, user, project). Config governs engine and tracking behavior; rules govern what gets filtered. Any change here is a breaking change for users.
 
-## File locations
+## Context
 
-| Layer | Path | Use |
-| --- | --- | --- |
-| Bundled | embedded in binary | Defaults shown below. Always present, can't be edited. |
-| User | `~/.config/lacon/config.yaml` | Personal settings. Overrides bundled. |
-| Project | `<cwd>/.lacon/config.yaml` | Repo-specific settings. Overrides user. |
+Three layers, lowest to highest priority: bundled (compiled defaults, always present, not editable), user (`~/.config/lacon/config.yaml`), and project (`<cwd>/.lacon/config.yaml`). All layers are optional in that a missing file falls back to the layer below; bundled defaults are always available. Rule files are specified separately in the filter-rule-schema spec.
 
-All three layers are optional in the sense that missing files fall back to the lower layer; bundled defaults are always available.
+## Criteria
 
-## v1 keys
+### File locations and precedence  {#file-locations-and-precedence}
 
-```yaml
-retention:                 # USER-ONLY
-  invocations_days: 30     # default 30; also applies to suspected_regressions
-  raw_outputs_days: 3      # default 3
+Project (`<cwd>/.lacon/config.yaml`) overrides user (`~/.config/lacon/config.yaml`) overrides bundled (embedded). A missing file inherits from the lower layer.
 
-defaults:                  # PROJECT-OR-USER
-  max_bytes: 32768         # fallback final-stage cap for rules that omit max_bytes
+### v1 keys and defaults  {#v1-keys-and-defaults}
 
-store_raw_outputs: false   # PROJECT-OR-USER (project-level opt-in is the documented pattern)
-```
+The v1 keys are: `retention.invocations_days` (default 30), `retention.raw_outputs_days` (default 3), `defaults.max_bytes` (default 32768), and `store_raw_outputs` (default false). All keys are optional; a missing key inherits from the layer below.
 
-All keys are optional. A missing key inherits from the layer below.
+### retention is user-only  {#retention-is-user-only}
 
-### `retention`
+The `retention` block may appear only in user or bundled config. `invocations_days` also governs the `suspected_regressions` table (tied by foreign key). Because the SQLite database is shared across all of a user's projects, per-project retention would be ambiguous — a project config containing a `retention` block fails validation.
 
-Pruning windows for the SQLite tables in [tracking-data-model](tracking-data-model.md). Pruning runs on `lacon` startup.
+### defaults.max_bytes scope and effect  {#defaults-max-bytes-scope-and}
 
-- `invocations_days` (integer, default 30) — also governs `suspected_regressions` (which is tied to `invocations` by foreign key).
-- `raw_outputs_days` (integer, default 3) — independent of `invocations_days` because raw outputs are bulkier and warrant tighter retention.
+`defaults.max_bytes` (integer, default 32768) is the final-stage cap applied to any rule that does not declare its own `max_bytes` primitive; the engine never returns more than this many bytes from a pipeline. Scope: project, user, or bundled.
 
-**Scope: user-only.** The SQLite database is shared across projects on the user's machine; per-project retention overrides would create ambiguous semantics ("which project's retention wins for `raw_outputs` row X if it was captured in project A but pruned while running in project B?"). Project files that include a `retention` block fail validation.
+### store_raw_outputs scope  {#store-raw-outputs-scope}
 
-### `defaults.max_bytes`
+`store_raw_outputs` (boolean, default false) makes `lacon run` store merged stdout/stderr in the `raw_outputs` table for `lacon explain`. Scope: project, user, or bundled; project-level opt-in is the documented pattern.
 
-Integer, default 32768. Applied as the final-stage cap on any rule that does not declare its own `max_bytes` primitive (see [filter-rule-schema → max_bytes](filter-rule-schema.md#native-primitives)). The engine never returns more than this many bytes from a pipeline.
+### Per-key deep merge  {#per-key-deep-merge}
 
-**Scope: project-or-user.** A repo with chattier-than-usual tooling can lower this for the project; a user can set their own preferred ceiling.
+Resolving the effective config walks layers from bundled up to project. Each layer overrides scalar keys present in lower layers; sub-objects (`retention`, `defaults`) merge recursively rather than replacing wholesale, so a user need not repeat a bundled default to keep it.
 
-### `store_raw_outputs`
+### Per-key scope enforcement  {#per-key-scope-enforcement}
 
-Boolean, default `false`. When true, `lacon run` stores merged stdout/stderr in the `raw_outputs` table for retrieval by `lacon explain`. See [tracking-data-model → Privacy](tracking-data-model.md#privacy) for the full v1 privacy contract.
+A config file that includes a key not allowed at its layer fails validation with an error pointing at the correct file — e.g. `.lacon/config.yaml:1: key \`retention\` is user-only; move to ~/.config/lacon/config.yaml`. Bundled config is the source of defaults and cannot be edited at runtime.
 
-**Scope: project-or-user.** Project-level opt-in is the documented pattern, but a user can default it on globally if they understand the privacy implications.
+### Unknown keys fail validation  {#unknown-keys-fail-validation}
 
-## Layer interaction
+Unknown top-level or nested keys fail validation rather than being silently ignored, so a typo produces a clear error. Same posture as the filter-rule schema.
 
-**Per-key deep merge.** When the engine resolves the effective config, it walks the layers from lowest priority (bundled) to highest (project). Each layer overrides scalar keys present in lower layers; sub-objects (`retention`, `defaults`) merge recursively rather than replacing wholesale.
+### Validation dispatch and malformed-config handling  {#validation-dispatch-and-malformed-config}
 
-Example. Given:
-
-```yaml
-# bundled (defaults)
-retention:
-  invocations_days: 30
-  raw_outputs_days: 3
-defaults:
-  max_bytes: 32768
-store_raw_outputs: false
-
-# user
-retention:
-  invocations_days: 7
-defaults:
-  max_bytes: 16384
-
-# project
-store_raw_outputs: true
-```
-
-The effective config is:
-
-```yaml
-retention:
-  invocations_days: 7        # from user
-  raw_outputs_days: 3        # inherited from bundled
-defaults:
-  max_bytes: 16384           # from user
-store_raw_outputs: true      # from project
-```
-
-User does not need to repeat `raw_outputs_days` to keep the bundled default.
-
-## Per-key scope rules
-
-| Key | Allowed layers | Rationale |
-| --- | --- | --- |
-| `retention.invocations_days` | user, bundled | DB-wide; per-project override would be ambiguous |
-| `retention.raw_outputs_days` | user, bundled | Same as above |
-| `defaults.max_bytes` | project, user, bundled | Reasonable per-project knob (chatty tools, etc.) |
-| `store_raw_outputs` | project, user, bundled | Project opt-in is the documented use case |
-
-A project config that includes a user-only key fails validation with an error pointing the user to `~/.config/lacon/config.yaml`. Example:
-
-```
-.lacon/config.yaml:1: key `retention` is user-only; move to ~/.config/lacon/config.yaml
-```
-
-Bundled config is the source of defaults; it cannot be edited at runtime. Modifying defaults requires a `lacon` release.
-
-## Unknown keys
-
-Unknown top-level or nested keys fail validation. We do not silently ignore them; a typo in a config file should produce a clear error rather than a silently-default behaviour. This is the same posture as [filter-rule-schema](filter-rule-schema.md).
-
-## Validation
-
-`lacon validate <path>` accepts both rule files and config files. The dispatcher detects file type by content:
-
-- Top-level `id` + `match` → rule file → validate against [filter-rule-schema](filter-rule-schema.md)
-- Anything else → config file → validate against this spec
-
-`lacon doctor` runs config validation on every layer's `config.yaml` (if present) in addition to its rule sweep, and reports any layer-scope violations or unknown keys.
-
-A config file that fails validation is rejected at load time; the previous (validated) layer is used in its place. `lacon` does not silently fall back to defaults when a config file is malformed — that would mask user mistakes.
-
-## Worked example: monorepo project
-
-```yaml
-# .lacon/config.yaml — at the repo root
-defaults:
-  max_bytes: 8192          # this monorepo's tools are chatty; tighten the cap
-store_raw_outputs: true    # team agreed; the dir is gitignored and machine-local
-```
-
-Combined with the user's `~/.config/lacon/config.yaml`:
-
-```yaml
-retention:
-  invocations_days: 90     # the user wants longer trend history
-```
-
-The effective config when `lacon` runs in this project: 90-day invocation retention, 3-day raw-output retention (bundled), 8 KB default `max_bytes` (project), `store_raw_outputs: true` (project).
+`lacon validate <path>` detects file type by content: top-level `id` + `match` is a rule file (validated against the filter-rule schema), anything else is a config file (validated against this spec). `lacon doctor` validates every layer's `config.yaml` in addition to its rule sweep, reporting layer-scope violations and unknown keys. A config file that fails validation is rejected at load time and the previous validated layer is used in its place — `lacon` does not silently fall back to defaults on a malformed file.
